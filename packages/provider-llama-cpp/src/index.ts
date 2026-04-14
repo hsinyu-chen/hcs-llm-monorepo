@@ -50,13 +50,10 @@ export class LlamaCppProvider implements LLMProvider {
 
     async getAvailableModels(config: LLMProviderConfig): Promise<LLMModelDefinition[]> {
         const c = this.extractConfig(config);
-        let modelId = c.modelId;
-
-        // Auto-fetch if default
-        if (modelId === 'local-model' || !modelId) {
-            const alias = await this.fetchModelAlias(c.baseUrl);
-            if (alias) modelId = alias;
-        }
+        
+        // Always try to fetch current model from server to ensure 'Refresh' works
+        const alias = await this.fetchModelAlias(c.baseUrl);
+        const modelId = alias || c.modelId || 'local-model';
 
         return [
             {

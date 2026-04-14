@@ -8,15 +8,36 @@ import { LlamaCppProvider } from '@hcs/llm-provider-llama-cpp';
   selector: 'hcs-llama-config',
   standalone: true,
   imports: [CommonModule, FormsModule],
+  styles: [`
+    .provider-fields { position: relative; }
+    .refresh-mask {
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.3);
+        backdrop-filter: blur(2px);
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        color: #fff;
+        font-weight: bold;
+        pointer-events: none;
+    }
+  `],
   template: `
     <div class="provider-fields">
+      @if (isRefreshing()) {
+        <div class="refresh-mask">REFRESHING...</div>
+      }
+
       <div class="form-group">
         <label for="llamaUrl">Base URL:</label>
         <div class="input-with-action">
           <input id="llamaUrl" type="text" [(ngModel)]="config.settings.baseUrl" 
                  placeholder="http://localhost:8080" (ngModelChange)="configChanged.emit()">
-          <button class="refresh-btn" (click)="refreshModel()" [disabled]="isRefreshing" [title]="'Refresh from server'">
-            {{ isRefreshing ? '...' :'🔄' }}
+          <button class="refresh-btn" (click)="refreshModel()" [disabled]="isRefreshing()" [title]="'Refresh from server'">
+            {{ isRefreshing() ? '...' :'🔄' }}
           </button>
         </div>
       </div>
@@ -107,7 +128,7 @@ export class LlamaConfigComponent {
   public i18n = computed(() => this.customTranslations || DEFAULT_LLM_TRANSLATIONS);
   
   private provider = new LlamaCppProvider();
-  isRefreshing = false;
+  isRefreshing = signal(false);
 
   constructor() {
     if (!this.config.settings.additionalSettings) {
@@ -116,7 +137,7 @@ export class LlamaConfigComponent {
   }
 
   async refreshModel() {
-    this.isRefreshing = true;
+    this.isRefreshing.set(true);
     try {
       const models = await this.provider.getAvailableModels(this.config.settings);
       if (models && models.length > 0) {
@@ -126,7 +147,7 @@ export class LlamaConfigComponent {
     } catch (e) {
       console.error('Failed to refresh model alias', e);
     } finally {
-      this.isRefreshing = false;
+      this.isRefreshing.set(false);
     }
   }
 }

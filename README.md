@@ -89,3 +89,41 @@ npm run build --workspaces
 cd packages/playground
 npm start
 ```
+
+---
+
+## Customization
+
+### 1. Internationalization (i18n)
+The UI components use the `LLM_TRANSLATIONS` token. You can provide a custom implementation in your application configuration:
+
+```typescript
+import { LLM_TRANSLATIONS, DEFAULT_LLM_TRANSLATIONS } from '@hcs/llm-angular-common';
+
+const customTranslations = {
+  ...DEFAULT_LLM_TRANSLATIONS,
+  settings: {
+    ...DEFAULT_LLM_TRANSLATIONS.settings,
+    modelId: 'Custom Model Label'
+  }
+};
+
+providers: [
+  { provide: LLM_TRANSLATIONS, useValue: customTranslations }
+]
+```
+
+### 2. Storage Backend
+The core logic relies on the `ILLMStorage` interface. The default implementation is `BrowserIndexedDBStorage`, but it can be replaced with any class implementing the required methods (`getAll`, `getById`, `save`, `delete`):
+
+```typescript
+import { ILLMStorage } from '@hcs/llm-core';
+
+export class MyCustomStorage implements ILLMStorage {
+  // Implement interface methods
+}
+
+providers: [
+  { provide: ILLMStorage, useClass: MyCustomStorage }
+]
+```

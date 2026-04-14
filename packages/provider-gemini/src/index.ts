@@ -64,7 +64,7 @@ export class GeminiProvider implements LLMProvider {
         };
     }
 
-    getAvailableModels(config: LLMProviderConfig): LLMModelDefinition[] {
+    getAvailableModels(config: LLMProviderConfig): LLMModelDefinition[] | Promise<LLMModelDefinition[]> {
         return [
             {
                 id: 'gemini-3.1-pro-preview',
@@ -240,7 +240,7 @@ export class GeminiProvider implements LLMProvider {
         const cachedContentName = config.cachedContentName;
         const responseSchema = config.responseSchema as Schema;
 
-        const currentModel = this.getAvailableModels(providerConfig).find(m => m.id === lastModelId);
+        const currentModel = (await this.getAvailableModels(providerConfig)).find(m => m.id === lastModelId);
         const modelSupportsThinking = currentModel?.supportsThinking ?? false;
 
         let currentThinkingLevel: ThinkingLevel = ThinkingLevel.MINIMAL;

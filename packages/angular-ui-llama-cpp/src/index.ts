@@ -18,8 +18,13 @@ import { LlamaCppProvider } from '@hcs/llm-provider-llama-cpp';
 
       <div class="form-group">
         <label for="llamaModel">Model Name:</label>
-        <input id="llamaModel" type="text" [(ngModel)]="config.settings.modelId" 
-               placeholder="local-model" (ngModelChange)="configChanged.emit()">
+        <div class="input-with-action">
+          <input id="llamaModel" type="text" [(ngModel)]="config.settings.modelId" 
+                 placeholder="local-model" (ngModelChange)="configChanged.emit()">
+          <button class="refresh-btn" (click)="refreshModel()" [disabled]="isRefreshing" [title]="'Refresh from server'">
+            {{ isRefreshing ? '...' :'🔄' }}
+          </button>
+        </div>
       </div>
 
       <div class="advanced-divider">SAMPLING & PENALTIES</div>
@@ -48,34 +53,44 @@ import { LlamaCppProvider } from '@hcs/llm-provider-llama-cpp';
           <label>Enable Thinking:</label>
           <input type="checkbox" [(ngModel)]="config.settings.additionalSettings!['enableThinking']" (ngModelChange)="configChanged.emit()">
       </div>
+      @if (config.settings.additionalSettings!['enableThinking']) {
+        <div class="form-group">
+            <label>Reasoning Effort:</label>
+            <select [(ngModel)]="config.settings.additionalSettings!['reasoningEffort']" (ngModelChange)="configChanged.emit()">
+                <option value="low">Low (512)</option>
+                <option value="medium">Medium (2048)</option>
+                <option value="high">High (8192)</option>
+            </select>
+        </div>
+      }
     </div>
-  `,
-  styles: [`
-    .provider-fields { display: flex; flex-direction: column; gap: 4px; }
-    .form-group {
-      display: grid;
-      grid-template-columns: 140px 1fr;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 8px;
-      label { color: #8b949e; font-size: 0.85em; font-weight: 500; }
-      input[type="text"] { width: 100%; padding: 8px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: white; }
-    }
-    .advanced-divider { font-size: 0.7rem; color: #58a6ff; margin-top: 12px; border-bottom: 1px solid #30363d; padding-bottom: 2px; }
-    .form-grid { display: grid; gap: 8px; &.columns-2 { grid-template-columns: 1fr 1fr; } }
-    .form-group-vertical {
-        label { display: block; font-size: 0.7rem; color: #8b949e; margin-bottom: 2px; }
-        input { width: 100%; padding: 4px 8px; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: white; }
-    }
-  `]
+  `
 })
 export class LlamaConfigComponent {
   config = inject(LLM_CONFIG_DATA);
   configChanged = output<void>();
+  
+  private provider = new LlamaCppProvider();
+  isRefreshing = false;
 
   constructor() {
     if (!this.config.settings.additionalSettings) {
       this.config.settings.additionalSettings = {};
+    }
+  }
+
+  async refreshModel() {
+    this.isRefreshing = true;
+    try {
+      const models = await this.provider.getAvailableModels(this.config.settings);
+      if (models && models.length > 0) {
+        this.config.settings.modelId = models[0].id;
+        this.configChanged.emit();
+      }
+    } catch (e) {
+      console.error('Failed to refresh model alias', e);
+    } finally {
+      this.isRefreshing = false;
     }
   }
 }

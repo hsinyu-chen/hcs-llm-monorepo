@@ -29,4 +29,8 @@ export class LLMManager {
     getProvider(providerName: string): LLMProvider | undefined {
         return this.registry.getProvider(providerName);
     }
+
+    getRegistry(): LLMProviderRegistry {
+        return this.registry;
+    }
 }

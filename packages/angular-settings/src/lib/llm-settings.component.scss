@@ -143,11 +143,145 @@
     h4 { margin: 0 0 12px 0; color: #888; font-size: 0.9rem; }
 }
 
+.pricing-estimation {
+    margin-top: 24px;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 16px;
+
+    .estimation-title {
+        margin: 0 0 12px 0;
+        font-size: 0.85rem;
+        color: #007bff;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .estimation-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        margin-bottom: 12px;
+
+        .est-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            .est-label { font-size: 0.75rem; color: #777; }
+            .est-value { font-size: 0.9rem; color: #ddd; font-family: monospace; }
+        }
+
+        .est-total {
+            grid-column: span 3;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            .est-label { font-weight: bold; color: #aaa; }
+            .est-value { font-size: 1.1rem; color: #28a745; font-weight: bold; }
+        }
+    }
+
+    .est-disclaimer {
+        font-size: 0.7rem;
+        color: #555;
+        font-style: italic;
+    }
+}
+
 .portal-wrapper {
     background: #252525;
     border-radius: 8px;
-    padding: 16px;
+    padding: 20px;
     margin-top: 8px;
+
+    ::ng-deep {
+        .provider-fields { 
+            display: flex; 
+            flex-direction: column; 
+            gap: 12px; 
+        }
+
+        .form-group {
+            display: grid;
+            grid-template-columns: 140px 1fr;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 0px; // Reset standard margin inside provider-fields
+
+            label { 
+                color: #8b949e; 
+                font-size: 0.85rem; 
+                font-weight: 500; 
+                margin-bottom: 0;
+            }
+
+            input[type="text"], input[type="number"], input[type="password"], select { 
+                width: 100%; 
+                padding: 8px 12px; 
+                background: #0d1117 !important; 
+                border: 1px solid #30363d !important; 
+                border-radius: 6px; 
+                color: #c9d1d9;
+                &:focus { border-color: #58a6ff !important; outline: none; }
+            }
+        }
+
+        .advanced-divider { 
+            font-size: 0.75rem; 
+            color: #58a6ff; 
+            margin-top: 8px; 
+            border-bottom: 1px solid #30363d; 
+            padding-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .form-grid { 
+            display: grid; 
+            gap: 12px; 
+            &.columns-2 { grid-template-columns: 1fr 1fr; }
+            &.columns-3 { grid-template-columns: 1fr 1fr 1fr; }
+        }
+
+        .form-group-vertical {
+            label { 
+                display: block; 
+                font-size: 0.7rem; 
+                color: #8b949e; 
+                margin-bottom: 4px; 
+            }
+            input, select { 
+                width: 100%; 
+                padding: 6px 10px; 
+                background: #0d1117 !important; 
+                border: 1px solid #30363d !important; 
+                border-radius: 4px; 
+                color: #fff; 
+            }
+        }
+
+        // Action grouping (like Llama's refresh)
+        .input-with-action {
+            display: flex;
+            gap: 8px;
+            input { flex: 1; }
+            .refresh-btn {
+                background: #30363d;
+                border: 1px solid #444;
+                border-radius: 6px;
+                color: #c9d1d9;
+                cursor: pointer;
+                padding: 0 12px;
+                white-space: nowrap;
+                &:hover { background: #444; border-color: #58a6ff; }
+                &:disabled { opacity: 0.5; cursor: not-allowed; }
+            }
+        }
+    }
 }
 
 .editor-footer {

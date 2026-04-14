@@ -39,6 +39,9 @@ export interface LLMUsageMetadata {
     completionSpeed?: number;  // tokens/s
     totalDuration?: number;    // ms
     promptProgress?: number;   // 0-1
+    promptTotal?: number;
+    promptProcessed?: number;
+    promptCache?: number;
 }
 
 export interface LLMStreamChunk {
@@ -99,7 +102,7 @@ export interface LLMProvider {
     countTokens(config: LLMProviderConfig, modelId: string, contents: LLMContent[]): Promise<number>;
     isConfigured(config: LLMProviderConfig): boolean;
     getCapabilities(): LLMProviderCapabilities;
-    getAvailableModels(config: LLMProviderConfig): LLMModelDefinition[];
+    getAvailableModels(config: LLMProviderConfig): LLMModelDefinition[] | Promise<LLMModelDefinition[]>;
     getDefaultModelId(): string;
     getPreview?(contents: LLMContent[]): LLMContent[];
 

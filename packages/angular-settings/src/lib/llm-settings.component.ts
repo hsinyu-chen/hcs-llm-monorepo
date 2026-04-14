@@ -14,19 +14,11 @@ import { FormsModule } from '@angular/forms';
 import { PortalModule, ComponentPortal } from '@angular/cdk/portal';
 import { LLMManager, LLMConfig, LLMProvider, ILLMStorage } from '@hcs/llm-core';
 
-/**
- * Injection Token for LLM Config Data in Portal components.
- */
-export const LLM_CONFIG_DATA = new InjectionToken<LLMConfig>('HCS_LLM_CONFIG_DATA');
-
-/**
- * Injection Token for the Storage Service.
- */
-export const LLM_STORAGE_TOKEN = new InjectionToken<ILLMStorage>('HCS_LLM_STORAGE_TOKEN');
-
 import { 
     LLM_TRANSLATIONS, 
-    DEFAULT_LLM_TRANSLATIONS 
+    DEFAULT_LLM_TRANSLATIONS,
+    LLM_STORAGE_TOKEN,
+    LLM_CONFIG_DATA
 } from '@hcs/llm-angular-common';
 
 // These would normally be imported from the provider-ui packages
@@ -99,15 +91,8 @@ export class LLMSettingsComponent {
         return new ComponentPortal(component, null, portalInjector);
     });
 
-    // Helper to resolve UI components (should be part of an Angular provider UI registry)
-    private uiRegistry = new Map<string, Type<any>>();
-    
-    registerUIComponent(id: string, component: Type<any>) {
-        this.uiRegistry.set(id, component);
-    }
-    
     private resolveUIComponent(id: string): Type<any> | undefined {
-        return this.uiRegistry.get(id);
+        return this.manager.getRegistry().getUIComponent(id);
     }
 
 
@@ -135,6 +120,48 @@ export class LLMSettingsComponent {
     testStatus = signal<string>('');
     testResponse = signal<string>('');
     isTesting = signal(false);
+
+    // Pricing estimation fields
+    costTrigger = signal(0);
+    modelPricing = computed(() => {
+        this.costTrigger(); // Dependency
+        const config = this.editingConfig();
+        if (!config) return null;
+
+        const provider = this.manager.getProvider(config.provider);
+        if (!provider) return null;
+
+        const s = config.settings;
+        const inputPrice = s.inputPrice ?? 0;
+        const cachePrice = s.cacheInputPrice ?? 0;
+        const outputPrice = s.outputPrice ?? 0;
+
+        // Only show if at least one price is defined and > 0
+        if (inputPrice === 0 && cachePrice === 0 && outputPrice === 0) return null;
+
+        // Generic estimation values (could be made inputs later)
+        const estInput = 50000;
+        const estCached = 10000;
+        const estOutput = 5000;
+
+        const inputCost = (estInput / 1000000) * inputPrice;
+        const cacheCost = (estCached / 1000000) * cachePrice;
+        const outputCost = (estOutput / 1000000) * outputPrice;
+        const total = inputCost + cacheCost + outputCost;
+
+        return {
+            inputPrice,
+            cachePrice,
+            outputPrice,
+            inputCost,
+            cacheCost,
+            outputCost,
+            total,
+            estInput,
+            estCached,
+            estOutput
+        };
+    });
 
     createConfig() {
         const newConfig: LLMConfig = {
@@ -166,7 +193,15 @@ export class LLMSettingsComponent {
     }
 
     onPortalAttached(ref: any) {
-        // Handle child outputs if needed
+        if (!ref || !(ref instanceof ComponentRef)) return;
+
+        // Subscribe to child's configChanged output to trigger re-calc
+        const instance = ref.instance;
+        if (instance.configChanged) {
+            instance.configChanged.subscribe(() => {
+                this.costTrigger.update(v => v + 1);
+            });
+        }
     }
 
     async deleteConfig(id: string) {

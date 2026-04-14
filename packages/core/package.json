@@ -1,11 +1,19 @@
 {
   "name": "@hcs/llm-core",
   "version": "1.0.0",
+  "type": "module",
   "description": "Pure TypeScript core for LLM provider abstraction",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
-    "build": "tsc"
+    "build": "tsc -b",
+    "watch": "tsc -b --watch"
   },
   "keywords": ["llm", "ai", "core", "hcs"],
   "author": "HCS Studio",

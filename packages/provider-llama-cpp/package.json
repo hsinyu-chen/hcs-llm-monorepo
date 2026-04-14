@@ -1,6 +1,7 @@
 {
   "name": "@hcs/llm-provider-llama-cpp",
   "version": "1.0.0",
+  "type": "module",
   "description": "Pure TypeScript Llama.cpp provider",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -8,7 +9,13 @@
     "@hcs/llm-core": "1.0.0"
   },
   "scripts": {
-    "build": "tsc"
+    "build": "tsc -b"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
   },
   "author": "HCS Studio",
   "license": "MIT"

@@ -48,9 +48,16 @@ export class LlamaCppProvider implements LLMProvider {
         };
     }
 
-    getAvailableModels(config: LLMProviderConfig): LLMModelDefinition[] {
+    async getAvailableModels(config: LLMProviderConfig): Promise<LLMModelDefinition[]> {
         const c = this.extractConfig(config);
-        const modelId = c.modelId;
+        let modelId = c.modelId;
+
+        // Auto-fetch if default
+        if (modelId === 'local-model' || !modelId) {
+            const alias = await this.fetchModelAlias(c.baseUrl);
+            if (alias) modelId = alias;
+        }
+
         return [
             {
                 id: modelId,
@@ -65,6 +72,17 @@ export class LlamaCppProvider implements LLMProvider {
         ];
     }
 
+    private async fetchModelAlias(baseUrl: string): Promise<string | null> {
+        try {
+            const response = await fetch(`${baseUrl}/props`);
+            if (response.ok) {
+                const data = await response.json();
+                return data.model_alias || null;
+            }
+        } catch {}
+        return null;
+    }
+
     getDefaultModelId(): string {
         return 'local-model';
     }
@@ -77,6 +95,12 @@ export class LlamaCppProvider implements LLMProvider {
     ): AsyncGenerator<LLMStreamChunk> {
         const c = this.extractConfig(providerConfig);
         const baseUrl = c.baseUrl;
+        let modelId = c.modelId;
+
+        if (modelId === 'local-model' || !modelId) {
+            const alias = await this.fetchModelAlias(baseUrl);
+            if (alias) modelId = alias;
+        }
 
         const messages: any[] = [
             ...(systemInstruction ? [{ role: 'system', content: systemInstruction }] : []),
@@ -100,10 +124,11 @@ export class LlamaCppProvider implements LLMProvider {
         const reasoningBudget = thinkingEnabled ? (reasoningBudgetMap[c.reasoningEffort] ?? 2048) : 0;
 
         const requestBody: Record<string, unknown> = {
-            model: c.modelId,
+            model: modelId,
             messages,
             stream: true,
             stream_options: { include_usage: true },
+            return_progress: true,
             cache_prompt: true,
             n_keep: n_keep,
             ...(c.temperature != null ? { temperature: c.temperature } : {}),
@@ -159,16 +184,22 @@ export class LlamaCppProvider implements LLMProvider {
                             const delta = data.choices?.[0]?.delta;
                             if (delta?.content) yield { text: delta.content };
                             if (delta?.reasoning_content) yield { text: delta.reasoning_content, thought: true };
-                            if (data.usage || data.timings) {
+
+                            if (data.usage || data.timings || data.prompt_progress) {
                                 const usage = data.usage;
                                 const timings = data.timings;
+                                const progress = data.prompt_progress;
                                 yield {
                                     usageMetadata: {
-                                        prompt: (timings?.prompt_n ?? usage?.prompt_tokens) || 0,
+                                        prompt: (timings?.prompt_n ?? usage?.prompt_tokens ?? progress?.total) || 0,
                                         candidates: (timings?.predicted_n ?? usage?.completion_tokens) || 0,
-                                        cached: (timings?.cache_n ?? usage?.prompt_tokens_details?.cached_tokens) || 0,
-                                        promptSpeed: timings?.prompt_per_second,
-                                        completionSpeed: timings?.predicted_per_second
+                                        cached: (timings?.cache_n ?? usage?.prompt_tokens_details?.cached_tokens ?? progress?.cache) || 0,
+                                        promptSpeed: timings?.prompt_per_second ?? (progress?.time_ms ? (progress.processed / (progress.time_ms / 1000)) : undefined),
+                                        completionSpeed: timings?.predicted_per_second,
+                                        promptProgress: progress && progress.total > 0 ? (progress.processed / progress.total) : undefined,
+                                        promptTotal: progress?.total,
+                                        promptProcessed: progress?.processed,
+                                        promptCache: progress?.cache
                                     }
                                 };
                             }

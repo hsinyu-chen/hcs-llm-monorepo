@@ -1,6 +1,7 @@
 {
   "name": "@hcs/llm-provider-gemini",
   "version": "1.0.0",
+  "type": "module",
   "description": "Pure TypeScript Google Gemini provider",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -9,7 +10,13 @@
     "@google/genai": "^1.47.0"
   },
   "scripts": {
-    "build": "tsc"
+    "build": "tsc -b"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
   },
   "author": "HCS Studio",
   "license": "MIT"

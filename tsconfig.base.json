@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "baseUrl": ".",
+    "paths": {
+      "@hcs/llm-core": ["packages/core/src/index.ts"],
+      "@hcs/llm-provider-gemini": ["packages/provider-gemini/src/index.ts"],
+      "@hcs/llm-provider-openai": ["packages/provider-openai/src/index.ts"],
+      "@hcs/llm-provider-llama-cpp": ["packages/provider-llama-cpp/src/index.ts"],
+      "@hcs/llm-angular-common": ["packages/angular-common/src/index.ts"],
+      "@hcs/llm-angular-settings": ["packages/angular-settings/src/index.ts"],
+      "@hcs/llm-angular-ui-gemini": ["packages/angular-ui-gemini/src/index.ts"],
+      "@hcs/llm-angular-ui-openai": ["packages/angular-ui-openai/src/index.ts"],
+      "@hcs/llm-angular-ui-llama-cpp": ["packages/angular-ui-llama-cpp/src/index.ts"]
+    }
+  }
+}

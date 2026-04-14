@@ -1,0 +1,29 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist/out-tsc",
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "experimentalDecorators": true,
+    "moduleResolution": "bundler",
+    "module": "ESNext",
+    "target": "ES2022"
+  },
+  "references": [
+    { "path": "../core" },
+    { "path": "../provider-gemini" },
+    { "path": "../provider-openai" },
+    { "path": "../provider-llama-cpp" },
+    { "path": "../angular-common" },
+    { "path": "../angular-settings" },
+    { "path": "../angular-ui-gemini" },
+    { "path": "../angular-ui-openai" },
+    { "path": "../angular-ui-llama-cpp" }
+  ]
+}

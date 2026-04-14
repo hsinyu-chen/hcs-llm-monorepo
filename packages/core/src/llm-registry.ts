@@ -7,8 +7,18 @@ import { LLMProvider, LLMProviderCapabilities } from './llm-provider';
 export class LLMProviderRegistry {
     private providers = new Map<string, LLMProvider>();
 
+    private uiComponents = new Map<string, any>();
+
     register(provider: LLMProvider): void {
         this.providers.set(provider.providerName, provider);
+    }
+
+    registerUIComponent(providerName: string, component: any): void {
+        this.uiComponents.set(providerName, component);
+    }
+
+    getUIComponent(providerName: string): any {
+        return this.uiComponents.get(providerName);
     }
 
     getProvider(providerName: string): LLMProvider | undefined {

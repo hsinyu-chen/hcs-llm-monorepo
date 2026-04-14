@@ -8,7 +8,13 @@
     "@hcs/llm-angular-common": "1.0.0"
   },
   "scripts": {
-    "build": "tsc"
+    "build": "tsc -b"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
   },
   "author": "HCS Studio",
   "license": "MIT"

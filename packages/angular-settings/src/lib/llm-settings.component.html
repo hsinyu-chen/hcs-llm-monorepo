@@ -31,13 +31,13 @@
         } @else {
         <div class="config-editor">
             <div class="form-group">
-                <label for="configNameInput">Profile Name</label>
+                <label for="configNameInput">{{ i18n().settings.configName }}</label>
                 <input id="configNameInput" type="text" [(ngModel)]="editingConfig()!.name"
                     placeholder="Enter name...">
             </div>
 
             <div class="form-group">
-                <label for="providerSelect">Provider</label>
+                <label for="providerSelect">{{ i18n().settings.provider }}</label>
                 <select id="providerSelect" [ngModel]="editingConfig()!.provider"
                     (ngModelChange)="onProviderChange($event)">
                     @for (p of providers; track p.id) {
@@ -53,22 +53,47 @@
             </div>
             
             <div class="rate-limit-settings">
-                <h4>Rate Limiting</h4>
+                <h4>{{ i18n().settings.rateLimitTitle }}</h4>
                 <div class="form-grid columns-2">
                     <div class="form-group-vertical">
-                        <label for="maxConcurrent">Max Concurrent</label>
+                        <label for="maxConcurrent">{{ i18n().settings.maxConcurrentRequests }}</label>
                         <input id="maxConcurrent" type="number" min="1" max="20"
                             [ngModel]="editingConfig()!.settings.maxConcurrentRequests ?? 1"
                             (ngModelChange)="editingConfig()!.settings.maxConcurrentRequests = +$event">
                     </div>
                     <div class="form-group-vertical">
-                        <label for="minInterval">Min Interval (ms)</label>
+                        <label for="minInterval">{{ i18n().settings.minRequestInterval }}</label>
                         <input id="minInterval" type="number" min="0" max="10000" step="50"
                             [ngModel]="editingConfig()!.settings.minRequestIntervalMs ?? 100"
                             (ngModelChange)="editingConfig()!.settings.minRequestIntervalMs = +$event">
                     </div>
                 </div>
             </div>
+
+            @if (modelPricing()) {
+            <div class="pricing-estimation">
+                <h4 class="estimation-title">{{ i18n().settings.modelPricingTitle }}</h4>
+                <div class="estimation-grid">
+                    <div class="est-item">
+                        <span class="est-label">{{ i18n().settings.modelInput }} ({{ modelPricing()!.estInput / 1000 }}K)</span>
+                        <span class="est-value">${{ modelPricing()!.inputCost.toFixed(4) }}</span>
+                    </div>
+                    <div class="est-item">
+                        <span class="est-label">{{ i18n().settings.modelCached }} ({{ modelPricing()!.estCached / 1000 }}K)</span>
+                        <span class="est-value">${{ modelPricing()!.cacheCost.toFixed(4) }}</span>
+                    </div>
+                    <div class="est-item">
+                        <span class="est-label">{{ i18n().settings.modelOutput }} ({{ modelPricing()!.estOutput / 1000 }}K)</span>
+                        <span class="est-value">${{ modelPricing()!.outputCost.toFixed(4) }}</span>
+                    </div>
+                    <div class="est-total">
+                        <span class="est-label">Total Projection:</span>
+                        <span class="est-value">${{ modelPricing()!.total.toFixed(4) }}</span>
+                    </div>
+                </div>
+                <div class="est-disclaimer">{{ i18n().settings.modelEstDisclaimer }}</div>
+            </div>
+            }
 
             <div class="editor-footer">
                 <div class="test-row">
@@ -83,7 +108,7 @@
 
                 @if (testResponse()) {
                 <div class="test-response-block">
-                    <span class="response-label">Model Response:</span>
+                    <span class="response-label">{{ i18n().settings.modelResponse }}</span>
                     <div class="response-text">{{ testResponse() }}</div>
                 </div>
                 }

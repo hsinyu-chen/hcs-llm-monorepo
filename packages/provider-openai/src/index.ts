@@ -46,7 +46,7 @@ export class OpenAIProvider implements LLMProvider {
         };
     }
 
-    getAvailableModels(config: LLMProviderConfig): LLMModelDefinition[] {
+    getAvailableModels(config: LLMProviderConfig): LLMModelDefinition[] | Promise<LLMModelDefinition[]> {
         const c = this.extractConfig(config);
         const id = c.modelId;
         return [

@@ -77,7 +77,10 @@ export class LlamaCppProvider implements LLMProvider {
             const response = await fetch(`${baseUrl}/props`);
             if (response.ok) {
                 const data = await response.json();
-                return data.model_alias || null;
+                if (data.model_alias) return data.model_alias;
+                if (data.model_path) {
+                    return data.model_path.split(/[/\\]/).pop() || data.model_path;
+                }
             }
         } catch {}
         return null;

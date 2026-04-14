@@ -46,6 +46,11 @@ export interface LLMTranslations {
         maxConcurrentRequests: string;
         minRequestInterval: string;
         modelResponse: string;
+        topP: string;
+        topK: string;
+        minP: string;
+        repeatPenalty: string;
+        maxTokens: string;
     }
 }
 
@@ -88,7 +93,12 @@ export const DEFAULT_LLM_TRANSLATIONS: LLMTranslations = {
         rateLimitTitle: 'Rate Limits',
         maxConcurrentRequests: 'Max Concurrent Requests',
         minRequestInterval: 'Min Request Interval (ms)',
-        modelResponse: 'Model Response:'
+        modelResponse: 'Model Response:',
+        topP: 'Top P:',
+        topK: 'Top K:',
+        minP: 'Min P:',
+        repeatPenalty: 'Repeat Penalty:',
+        maxTokens: 'Max Tokens:'
     }
 };
 
@@ -126,6 +136,11 @@ export const ZH_LLM_TRANSLATIONS: LLMTranslations = {
         rateLimitTitle: '速率限制',
         maxConcurrentRequests: '最大同時請求數',
         minRequestInterval: '最小請求間隔 (ms)',
-        modelResponse: '模型回應:'
+        modelResponse: '模型回應:',
+        topP: 'Top P:',
+        topK: 'Top K:',
+        minP: 'Min P:',
+        repeatPenalty: '重複懲罰 (Repeat Penalty):',
+        maxTokens: '最大 Token 數 (Max Tokens):'
     }
 };

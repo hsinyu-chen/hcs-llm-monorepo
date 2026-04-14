@@ -12,7 +12,7 @@ import { GeminiProvider } from '@hcs/llm-provider-gemini';
     <div class="provider-fields">
       <div class="form-group">
         <label for="geminiKey">Gemini API Key:</label>
-        <input id="geminiKey" type="password" [(ngModel)]="config.settings.apiKey" placeholder="AIza...">
+        <input id="geminiKey" type="password" [(ngModel)]="config.settings.apiKey" placeholder="AIza..." (ngModelChange)="configChanged.emit()">
       </div>
 
       <div class="form-group">
@@ -36,6 +36,51 @@ import { GeminiProvider } from '@hcs/llm-provider-gemini';
           </select>
         </div>
       }
+
+      <div class="advanced-divider">{{ i18n().settings.modelPricingTitle }}</div>
+      <div class="form-grid columns-3">
+          <div class="form-group-vertical">
+              <label>{{ i18n().settings.customInputPrice }}</label>
+              <input type="number" step="0.01" [(ngModel)]="config.settings.inputPrice" (ngModelChange)="configChanged.emit()" placeholder="0.00">
+          </div>
+          <div class="form-group-vertical">
+              <label>{{ i18n().settings.customCachePrice }}</label>
+              <input type="number" step="0.01" [(ngModel)]="config.settings.cacheInputPrice" (ngModelChange)="configChanged.emit()" placeholder="0.00">
+          </div>
+          <div class="form-group-vertical">
+              <label>{{ i18n().settings.customOutputPrice }}</label>
+              <input type="number" step="0.01" [(ngModel)]="config.settings.outputPrice" (ngModelChange)="configChanged.emit()" placeholder="0.00">
+          </div>
+      </div>
+
+      <div class="advanced-divider">SAMPLING & PENALTIES</div>
+      
+      <div class="form-grid columns-3">
+          <div class="form-group-vertical">
+              <label>{{ i18n().settings.temperature }}</label>
+              <input type="number" step="0.1" [(ngModel)]="config.settings.temperature" (ngModelChange)="configChanged.emit()" placeholder="0.7">
+          </div>
+          <div class="form-group-vertical">
+              <label>{{ i18n().settings.topP }}</label>
+              <input type="number" step="0.05" [(ngModel)]="config.settings.additionalSettings!['topP']" (ngModelChange)="configChanged.emit()" placeholder="0.95">
+          </div>
+          <div class="form-group-vertical">
+              <label>{{ i18n().settings.topK }}</label>
+              <input type="number" step="1" [(ngModel)]="config.settings.additionalSettings!['topK']" (ngModelChange)="configChanged.emit()" placeholder="40">
+          </div>
+          <div class="form-group-vertical">
+              <label>{{ i18n().settings.freqPenalty }}</label>
+              <input type="number" step="0.05" [(ngModel)]="config.settings.frequency_penalty" (ngModelChange)="configChanged.emit()" placeholder="0.0">
+          </div>
+          <div class="form-group-vertical">
+              <label>{{ i18n().settings.presPenalty }}</label>
+              <input type="number" step="0.05" [(ngModel)]="config.settings.presence_penalty" (ngModelChange)="configChanged.emit()" placeholder="0.0">
+          </div>
+          <div class="form-group-vertical">
+              <label>{{ i18n().settings.maxTokens }}</label>
+              <input type="number" step="256" [(ngModel)]="config.settings.maxOutputTokens" (ngModelChange)="configChanged.emit()" placeholder="4096">
+          </div>
+      </div>
     </div>
   `
 })

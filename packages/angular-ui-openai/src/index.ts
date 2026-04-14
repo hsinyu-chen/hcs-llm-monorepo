@@ -64,11 +64,45 @@ import { OpenAIProvider } from '@hcs/llm-provider-openai';
                      [(ngModel)]="config.settings.temperature" (ngModelChange)="configChanged.emit()">
           </div>
           <div class="form-group-vertical">
-              <label for="maxTokens">Max Tokens</label>
+              <label for="maxTokens">{{ i18n().settings.maxTokens }}</label>
               <input id="maxTokens" type="number" step="128" min="1" 
                      [(ngModel)]="config.settings.maxOutputTokens" (ngModelChange)="configChanged.emit()">
           </div>
+          <div class="form-group-vertical">
+              <label for="freq">{{ i18n().settings.freqPenalty }}</label>
+              <input id="freq" type="number" step="0.05" [(ngModel)]="config.settings.frequency_penalty" (ngModelChange)="configChanged.emit()">
+          </div>
+          <div class="form-group-vertical">
+              <label for="pres">{{ i18n().settings.presPenalty }}</label>
+              <input id="pres" type="number" step="0.05" [(ngModel)]="config.settings.presence_penalty" (ngModelChange)="configChanged.emit()">
+          </div>
       </div>
+
+      <div class="advanced-divider">Extended Config (OpenRouter/O1/O3)</div>
+      
+      <div class="form-group-toggle">
+        <label>Use Chat Template Kwargs (OpenRouter/etc):</label>
+        <input type="checkbox" [(ngModel)]="config.settings.additionalSettings!['useChatTemplateKwargs']" (ngModelChange)="configChanged.emit()">
+      </div>
+
+      @if (config.settings.additionalSettings!['useChatTemplateKwargs']) {
+        <div class="extra-kwargs-panel">
+          <div class="form-group-toggle">
+            <label>Enable Thinking:</label>
+            <input type="checkbox" [(ngModel)]="config.settings.additionalSettings!['enableThinking']" (ngModelChange)="configChanged.emit()">
+          </div>
+          @if (config.settings.additionalSettings!['enableThinking']) {
+            <div class="form-group">
+              <label>Reasoning Effort:</label>
+              <select [(ngModel)]="config.settings.additionalSettings!['reasoningEffort']" (ngModelChange)="configChanged.emit()">
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+          }
+        </div>
+      }
     </div>
   `
 })

@@ -23,6 +23,7 @@ export class OpenAIProvider implements LLMProvider {
             temperature: cleanStr(config.temperature) as number | undefined,
             frequencyPenalty: cleanStr(config.frequency_penalty) as number | undefined,
             presencePenalty: cleanStr(config.presence_penalty) as number | undefined,
+            maxOutputTokens: cleanStr(config.maxOutputTokens) as number | undefined,
             inputPrice: cleanStr(config.inputPrice) as number | undefined,
             cacheInputPrice: cleanStr(config.cacheInputPrice) as number | undefined,
             outputPrice: cleanStr(config.outputPrice) as number | undefined,
@@ -92,6 +93,7 @@ export class OpenAIProvider implements LLMProvider {
             ...(c.temperature != null ? { temperature: c.temperature } : {}),
             ...(c.frequencyPenalty != null ? { frequency_penalty: c.frequencyPenalty } : {}),
             ...(c.presencePenalty != null ? { presence_penalty: c.presencePenalty } : {}),
+            ...(c.maxOutputTokens != null ? { max_tokens: c.maxOutputTokens } : {}),
             ...(config.responseSchema ? {
                 response_format: {
                     type: 'json_schema',

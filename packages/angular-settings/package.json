@@ -1,0 +1,15 @@
+{
+  "name": "@hcs/llm-angular-settings",
+  "version": "1.0.0",
+  "description": "Angular UI component for HCS LLM Providers",
+  "peerDependencies": {
+    "@angular/core": ">=16.0.0",
+    "@angular/common": ">=16.0.0",
+    "@angular/forms": ">=16.0.0",
+    "@angular/cdk": ">=16.0.0",
+    "@hcs/llm-core": "1.0.0",
+    "@hcs/llm-angular-common": "1.0.0"
+  },
+  "author": "HCS Studio",
+  "license": "MIT"
+}

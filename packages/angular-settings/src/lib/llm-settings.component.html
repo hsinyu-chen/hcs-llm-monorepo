@@ -1,0 +1,99 @@
+<div class="settings-overlay">
+    <div class="settings-container">
+        <div class="settings-header">
+            <h2>{{ i18n().settings.title }}</h2>
+            <button class="close-btn" (click)="cancelEdit()">×</button>
+        </div>
+
+        @if (!editingConfig()) {
+        <div class="configs-list">
+            <div class="actions">
+                <button class="primary-btn" (click)="createConfig()">{{ i18n().settings.newConfig }}</button>
+            </div>
+
+            <div class="config-grid">
+                @for (config of configs(); track config.id) {
+                <div class="config-card">
+                    <div class="card-info">
+                        <strong>{{ config.name }}</strong>
+                        <span class="provider-tag">{{ config.provider }}</span>
+                    </div>
+                    <div class="card-actions">
+                        <button class="secondary-btn" (click)="editConfig(config)">Edit</button>
+                        <button class="danger-btn" (click)="deleteConfig(config.id)">{{ i18n().settings.delete }}</button>
+                    </div>
+                </div>
+                } @empty {
+                <p class="empty-msg">No profiles found.</p>
+                }
+            </div>
+        </div>
+        } @else {
+        <div class="config-editor">
+            <div class="form-group">
+                <label for="configNameInput">Profile Name</label>
+                <input id="configNameInput" type="text" [(ngModel)]="editingConfig()!.name"
+                    placeholder="Enter name...">
+            </div>
+
+            <div class="form-group">
+                <label for="providerSelect">Provider</label>
+                <select id="providerSelect" [ngModel]="editingConfig()!.provider"
+                    (ngModelChange)="onProviderChange($event)">
+                    @for (p of providers; track p.id) {
+                    <option [value]="p.id">{{ p.name }}</option>
+                    }
+                </select>
+            </div>
+
+            <div class="portal-wrapper">
+                @if (configPortal()) {
+                <ng-template [cdkPortalOutlet]="configPortal()" (attached)="onPortalAttached($event)"></ng-template>
+                }
+            </div>
+            
+            <div class="rate-limit-settings">
+                <h4>Rate Limiting</h4>
+                <div class="form-grid columns-2">
+                    <div class="form-group-vertical">
+                        <label for="maxConcurrent">Max Concurrent</label>
+                        <input id="maxConcurrent" type="number" min="1" max="20"
+                            [ngModel]="editingConfig()!.settings.maxConcurrentRequests ?? 1"
+                            (ngModelChange)="editingConfig()!.settings.maxConcurrentRequests = +$event">
+                    </div>
+                    <div class="form-group-vertical">
+                        <label for="minInterval">Min Interval (ms)</label>
+                        <input id="minInterval" type="number" min="0" max="10000" step="50"
+                            [ngModel]="editingConfig()!.settings.minRequestIntervalMs ?? 100"
+                            (ngModelChange)="editingConfig()!.settings.minRequestIntervalMs = +$event">
+                    </div>
+                </div>
+            </div>
+
+            <div class="editor-footer">
+                <div class="test-row">
+                    <button class="secondary-btn" (click)="testConnection()" [disabled]="isTesting()">
+                        {{ isTesting() ? i18n().settings.testing : i18n().settings.test }}
+                    </button>
+                    <span class="status-text" [class.success]="testStatus().includes('✅')"
+                        [class.error]="testStatus().includes('❌')">
+                        {{ testStatus() }}
+                    </span>
+                </div>
+
+                @if (testResponse()) {
+                <div class="test-response-block">
+                    <span class="response-label">Model Response:</span>
+                    <div class="response-text">{{ testResponse() }}</div>
+                </div>
+                }
+
+                <div class="final-actions">
+                    <button class="secondary-btn" (click)="cancelEdit()">{{ i18n().settings.cancel }}</button>
+                    <button class="primary-btn" (click)="saveConfig()">{{ i18n().settings.save }}</button>
+                </div>
+            </div>
+        </div>
+        }
+    </div>
+</div>

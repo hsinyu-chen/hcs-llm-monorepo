@@ -1,0 +1,15 @@
+{
+  "name": "@hcs/llm-provider-openai",
+  "version": "1.0.0",
+  "description": "Pure TypeScript OpenAI provider",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "dependencies": {
+    "@hcs/llm-core": "1.0.0"
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "author": "HCS Studio",
+  "license": "MIT"
+}

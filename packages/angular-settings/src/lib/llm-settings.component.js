@@ -1,66 +1,49 @@
-import { 
-    Component, 
-    inject, 
-    signal, 
-    output, 
-    computed, 
-    Injector, 
-    Type, 
-    ComponentRef,
-    InjectionToken
-} from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { PortalModule, ComponentPortal } from '@angular/cdk/portal';
-import { LLMManager, LLMConfig, LLMProvider, ILLMStorage } from '@hcs/llm-core';
-
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.LLMSettingsComponent = exports.LLM_STORAGE_TOKEN = exports.LLM_CONFIG_DATA = void 0;
+const core_1 = require("@angular/core");
+const common_1 = require("@angular/common");
+const forms_1 = require("@angular/forms");
+const portal_1 = require("@angular/cdk/portal");
+const llm_core_1 = require("@hcs/llm-core");
 /**
  * Injection Token for LLM Config Data in Portal components.
  */
-export const LLM_CONFIG_DATA = new InjectionToken<LLMConfig>('HCS_LLM_CONFIG_DATA');
-
+exports.LLM_CONFIG_DATA = new core_1.InjectionToken('HCS_LLM_CONFIG_DATA');
 /**
  * Injection Token for the Storage Service.
  */
-export const LLM_STORAGE_TOKEN = new InjectionToken<ILLMStorage>('HCS_LLM_STORAGE_TOKEN');
-
-import { 
-    LLM_TRANSLATIONS, 
-    DEFAULT_LLM_TRANSLATIONS 
-} from '@hcs/llm-angular-common';
-
+exports.LLM_STORAGE_TOKEN = new core_1.InjectionToken('HCS_LLM_STORAGE_TOKEN');
+const llm_angular_common_1 = require("@hcs/llm-angular-common");
 // These would normally be imported from the provider-ui packages
 // If we haven't created them yet, we'll need to define where they come from.
 // For now, I'll assume they will be provided via a registry or injected.
-@Component({
-    selector: 'hcs-llm-settings',
-    standalone: true,
-    imports: [CommonModule, FormsModule, PortalModule],
-    templateUrl: './llm-settings.component.html',
-    styleUrl: './llm-settings.component.scss'
-})
-export class LLMSettingsComponent {
-    settingsClosed = output<void>();
-
+let LLMSettingsComponent = class LLMSettingsComponent {
+    settingsClosed = (0, core_1.output)();
     // These should be provided in the app root or via a module
-    private manager = inject(LLMManager);
-    private storage = inject(LLM_STORAGE_TOKEN);
-    private injector = inject(Injector);
-    
+    manager = (0, core_1.inject)(llm_core_1.LLMManager);
+    storage = (0, core_1.inject)(exports.LLM_STORAGE_TOKEN);
+    injector = (0, core_1.inject)(core_1.Injector);
     // I18n bridge
-    private customTranslations = inject(LLM_TRANSLATIONS, { optional: true });
-    public i18n = computed(() => this.customTranslations || DEFAULT_LLM_TRANSLATIONS);
-
+    customTranslations = (0, core_1.inject)(llm_angular_common_1.LLM_TRANSLATIONS, { optional: true });
+    i18n = (0, core_1.computed)(() => this.customTranslations || llm_angular_common_1.DEFAULT_LLM_TRANSLATIONS);
     // Available Providers (could also be fetched from registry)
     providers = [
         { id: 'gemini', name: 'Google Gemini' },
         { id: 'openai', name: 'OpenAI / Web-API' },
         { id: 'llama.cpp', name: 'Llama.cpp (Local)' }
     ];
-
     // List of configs - we manually sync with storage since it's now pure TS
-    configs = signal<LLMConfig[]>([]);
-
+    configs = (0, core_1.signal)([]);
     constructor() {
         this.loadConfigs();
         // Setup listener if storage supports it
@@ -68,61 +51,49 @@ export class LLMSettingsComponent {
             this.storage.onChanged = (newConfigs) => this.configs.set(newConfigs);
         }
     }
-
     async loadConfigs() {
         const c = await this.storage.getAll();
         this.configs.set(c);
     }
-
     // Editing state
-    editingConfig = signal<LLMConfig | null>(null);
-
+    editingConfig = (0, core_1.signal)(null);
     // Dynamic Portal for Provider-specific settings
     // In a real modular setup, we'd have a Registry of UI components
-    configPortal = computed(() => {
+    configPortal = (0, core_1.computed)(() => {
         const config = this.editingConfig();
-        if (!config) return null;
-
+        if (!config)
+            return null;
         const provider = this.manager.getProvider(config.provider);
-        if (!provider || !provider.settingsComponentId) return null;
-
+        if (!provider || !provider.settingsComponentId)
+            return null;
         // In a real monorepo, we'd resolve the string ID to a Type<any>
         // For this demo, we'll need a way for the user to register these UI components.
         const component = this.resolveUIComponent(provider.settingsComponentId);
-        if (!component) return null;
-
-        const portalInjector = Injector.create({
-            providers: [{ provide: LLM_CONFIG_DATA, useValue: config }],
+        if (!component)
+            return null;
+        const portalInjector = core_1.Injector.create({
+            providers: [{ provide: exports.LLM_CONFIG_DATA, useValue: config }],
             parent: this.injector
         });
-
-        return new ComponentPortal(component, null, portalInjector);
+        return new portal_1.ComponentPortal(component, null, portalInjector);
     });
-
     // Helper to resolve UI components (should be part of an Angular provider UI registry)
-    private uiRegistry = new Map<string, Type<any>>();
-    
-    registerUIComponent(id: string, component: Type<any>) {
+    uiRegistry = new Map();
+    registerUIComponent(id, component) {
         this.uiRegistry.set(id, component);
     }
-    
-    private resolveUIComponent(id: string): Type<any> | undefined {
+    resolveUIComponent(id) {
         return this.uiRegistry.get(id);
     }
-
-
-    onProviderChange(newProvider: string) {
+    onProviderChange(newProvider) {
         const current = this.editingConfig();
         if (current) {
             const providerInstance = this.manager.getProvider(newProvider);
             let defaultModelId = providerInstance ? providerInstance.getDefaultModelId() : '';
-
-            const newSettings: any = { ...current.settings, modelId: defaultModelId };
-
+            const newSettings = { ...current.settings, modelId: defaultModelId };
             if (newProvider === 'gemini') {
                 newSettings.thinkingLevel = 'minimal';
             }
-
             this.editingConfig.set({
                 ...current,
                 provider: newProvider,
@@ -130,14 +101,12 @@ export class LLMSettingsComponent {
             });
         }
     }
-
     // Test connection status
-    testStatus = signal<string>('');
-    testResponse = signal<string>('');
-    isTesting = signal(false);
-
+    testStatus = (0, core_1.signal)('');
+    testResponse = (0, core_1.signal)('');
+    isTesting = (0, core_1.signal)(false);
     createConfig() {
-        const newConfig: LLMConfig = {
+        const newConfig = {
             id: crypto.randomUUID(),
             name: this.i18n().settings.newConfigName,
             provider: 'openai',
@@ -149,13 +118,11 @@ export class LLMSettingsComponent {
         this.editingConfig.set(newConfig);
         this.testStatus.set('');
     }
-
-    editConfig(config: LLMConfig) {
+    editConfig(config) {
         const cloned = JSON.parse(JSON.stringify(config));
         this.editingConfig.set(cloned);
         this.testStatus.set('');
     }
-
     async saveConfig() {
         const config = this.editingConfig();
         if (config) {
@@ -164,37 +131,27 @@ export class LLMSettingsComponent {
             this.editingConfig.set(null);
         }
     }
-
-    onPortalAttached(ref: any) {
+    onPortalAttached(ref) {
         // Handle child outputs if needed
     }
-
-    async deleteConfig(id: string) {
+    async deleteConfig(id) {
         if (confirm(this.i18n().settings.confirmDelete)) {
             await this.storage.delete(id);
             await this.loadConfigs();
         }
     }
-
     async testConnection() {
         const config = this.editingConfig();
-        if (!config) return;
-
+        if (!config)
+            return;
         this.isTesting.set(true);
         this.testStatus.set(this.i18n().settings.testing);
         this.testResponse.set('');
-
         try {
             const provider = await this.manager.getProviderForConfig(config);
-            if (!provider) throw new Error('Provider not found');
-
-            const stream = provider.generateContentStream(
-                config.settings,
-                [{ role: 'user', parts: [{ text: 'Hello, are you alive? Please reply with a short greeting.' }] }],
-                'You are a testing assistant.',
-                { signal: AbortSignal.timeout(10000) }
-            );
-
+            if (!provider)
+                throw new Error('Provider not found');
+            const stream = provider.generateContentStream(config.settings, [{ role: 'user', parts: [{ text: 'Hello, are you alive? Please reply with a short greeting.' }] }], 'You are a testing assistant.', { signal: AbortSignal.timeout(10000) });
             let result = '';
             for await (const chunk of stream) {
                 if (chunk.text) {
@@ -202,24 +159,38 @@ export class LLMSettingsComponent {
                     this.testResponse.set(result);
                 }
             }
-
             if (result) {
                 this.testStatus.set('✅ ' + this.i18n().settings.testSuccess);
-            } else {
+            }
+            else {
                 this.testStatus.set('❌ Empty response');
             }
-        } catch (e: any) {
+        }
+        catch (e) {
             this.testStatus.set('❌ ' + (e.message || String(e)));
-        } finally {
+        }
+        finally {
             this.isTesting.set(false);
         }
     }
-
     cancelEdit() {
         if (this.editingConfig()) {
             this.editingConfig.set(null);
-        } else {
+        }
+        else {
             this.settingsClosed.emit();
         }
     }
-}
+};
+exports.LLMSettingsComponent = LLMSettingsComponent;
+exports.LLMSettingsComponent = LLMSettingsComponent = __decorate([
+    (0, core_1.Component)({
+        selector: 'hcs-llm-settings',
+        standalone: true,
+        imports: [common_1.CommonModule, forms_1.FormsModule, portal_1.PortalModule],
+        templateUrl: './llm-settings.component.html',
+        styleUrl: './llm-settings.component.scss'
+    }),
+    __metadata("design:paramtypes", [])
+], LLMSettingsComponent);
+//# sourceMappingURL=llm-settings.component.js.map

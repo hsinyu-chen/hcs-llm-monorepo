@@ -1,10 +1,15 @@
 import { InjectionToken } from '@angular/core';
-import { LLMConfig } from '@hcs/llm-core';
+import { LLMConfig, ILLMStorage } from '@hcs/llm-core';
 
 /**
  * Injection Token for LLM Config Data in Portal components.
  */
 export const LLM_CONFIG_DATA = new InjectionToken<LLMConfig>('HCS_LLM_CONFIG_DATA');
+
+/**
+ * Injection Token for the Storage Service.
+ */
+export const LLM_STORAGE_TOKEN = new InjectionToken<ILLMStorage>('HCS_LLM_STORAGE_TOKEN');
 
 /**
  * Interface for the required translation keys in the LLM Settings UI.
@@ -22,7 +27,6 @@ export interface LLMTranslations {
         testSuccess: string;
         testError: string;
         newConfigName: string;
-        // Add more as needed based on the refactored html
     }
 }
 

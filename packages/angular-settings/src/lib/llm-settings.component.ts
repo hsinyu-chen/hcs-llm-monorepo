@@ -7,7 +7,9 @@ import {
     Injector, 
     Type, 
     ComponentRef,
-    InjectionToken
+    InjectionToken,
+    OnInit,
+    OnDestroy
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -31,7 +33,7 @@ import {
     templateUrl: './llm-settings.component.html',
     styleUrl: './llm-settings.component.scss'
 })
-export class LLMSettingsComponent {
+export class LLMSettingsComponent implements OnInit, OnDestroy {
     settingsClosed = output<void>();
 
     // These should be provided in the app root or via a module
@@ -42,6 +44,8 @@ export class LLMSettingsComponent {
     // I18n bridge
     private customTranslations = inject(LLM_TRANSLATIONS, { optional: true });
     public i18n = computed(() => this.customTranslations || DEFAULT_LLM_TRANSLATIONS);
+    
+    private unsubscribe?: () => void;
 
     // Available Providers (could also be fetched from registry)
     providers = [
@@ -53,12 +57,13 @@ export class LLMSettingsComponent {
     // List of configs - we manually sync with storage since it's now pure TS
     configs = signal<LLMConfig[]>([]);
 
-    constructor() {
+    ngOnInit() {
         this.loadConfigs();
-        // Setup listener if storage supports it
-        if (this.storage.onChanged) {
-            this.storage.onChanged = (newConfigs) => this.configs.set(newConfigs);
-        }
+        this.unsubscribe = this.storage.subscribe((newConfigs) => this.configs.set(newConfigs));
+    }
+
+    ngOnDestroy() {
+        this.unsubscribe?.();
     }
 
     async loadConfigs() {
@@ -199,7 +204,7 @@ export class LLMSettingsComponent {
         const instance = ref.instance;
         if (instance.configChanged) {
             instance.configChanged.subscribe(() => {
-                this.costTrigger.update(v => v + 1);
+                this.costTrigger.update((v: number) => v + 1);
             });
         }
     }

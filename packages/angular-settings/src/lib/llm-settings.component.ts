@@ -188,6 +188,14 @@ export class LLMSettingsComponent implements OnInit, OnDestroy {
         this.testStatus.set('');
     }
 
+    copyConfig(config: LLMConfig) {
+        const cloned = JSON.parse(JSON.stringify(config));
+        cloned.id = crypto.randomUUID();
+        cloned.name = `${cloned.name} (Copy)`;
+        this.editingConfig.set(cloned);
+        this.testStatus.set('');
+    }
+
     async saveConfig() {
         const config = this.editingConfig();
         if (config) {

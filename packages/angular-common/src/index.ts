@@ -20,6 +20,7 @@ export interface LLMTranslations {
         newConfig: string;
         save: string;
         cancel: string;
+        copy: string;
         delete: string;
         test: string;
         confirmDelete: string;
@@ -68,6 +69,7 @@ export const DEFAULT_LLM_TRANSLATIONS: LLMTranslations = {
         newConfig: 'Add New Profile',
         save: 'Save Changes',
         cancel: 'Cancel',
+        copy: 'Copy',
         delete: 'Delete',
         test: 'Test Connection',
         confirmDelete: 'Are you sure you want to delete this profile?',
@@ -111,6 +113,7 @@ export const ZH_LLM_TRANSLATIONS: LLMTranslations = {
         newConfig: '+ 新增設定 Profile',
         save: '儲存設定',
         cancel: '取消',
+        copy: '複製',
         delete: '刪除',
         test: '測試連線',
         confirmDelete: '確定要刪除此設定？',

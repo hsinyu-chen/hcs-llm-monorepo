@@ -20,6 +20,7 @@
                     </div>
                     <div class="card-actions">
                         <button class="secondary-btn" (click)="editConfig(config)">Edit</button>
+                        <button class="secondary-btn" (click)="copyConfig(config)">{{ i18n().settings.copy }}</button>
                         <button class="danger-btn" (click)="deleteConfig(config.id)">{{ i18n().settings.delete }}</button>
                     </div>
                 </div>

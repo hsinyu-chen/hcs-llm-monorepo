@@ -9,7 +9,8 @@ import {
     ComponentRef,
     InjectionToken,
     OnInit,
-    OnDestroy
+    OnDestroy,
+    input
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -35,6 +36,7 @@ import {
 })
 export class LLMSettingsComponent implements OnInit, OnDestroy {
     settingsClosed = output<void>();
+    showPricing = input<boolean>(true);
 
     // These should be provided in the app root or via a module
     private manager = inject(LLMManager);
@@ -130,6 +132,8 @@ export class LLMSettingsComponent implements OnInit, OnDestroy {
     costTrigger = signal(0);
     modelPricing = computed(() => {
         this.costTrigger(); // Dependency
+        if (!this.showPricing()) return null;
+        
         const config = this.editingConfig();
         if (!config) return null;
 

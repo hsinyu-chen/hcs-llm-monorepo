@@ -163,7 +163,22 @@ export class LlamaCppProvider implements LLMProvider {
                 signal: config.signal
             });
 
-            if (!response.ok) throw new Error(`llama.cpp OAI error (${response.status})`);
+            if (!response.ok) {
+                let errorMsg = `llama.cpp OAI error (${response.status})`;
+                try {
+                    const body = await response.text();
+                    console.error('LlamaCpp OAI Error Details:', body);
+                    if (body) {
+                        try {
+                            const json = JSON.parse(body);
+                            errorMsg += `: ${json.error?.message || json.message || body}`;
+                        } catch {
+                            errorMsg += `: ${body}`;
+                        }
+                    }
+                } catch {}
+                throw new Error(errorMsg);
+            }
             if (!response.body) throw new Error('No response body');
 
             const reader = response.body.getReader();
@@ -218,18 +233,33 @@ export class LlamaCppProvider implements LLMProvider {
         const baseUrl = this.extractConfig(providerConfig).baseUrl;
         const text = contents.flatMap(c => c.parts).map(p => p.text || '').join('\n');
         if (!text) return 0;
-        try {
-            const response = await fetch(`${baseUrl}/tokenize`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: text })
-            });
-            if (response.ok) {
-                const data = await response.json();
-                return Array.isArray(data.tokens) ? data.tokens.length : 0;
+
+        let lastError: any;
+        for (let attempt = 1; attempt <= 2; attempt++) {
+            try {
+                const response = await fetch(`${baseUrl}/tokenize`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: text })
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    return Array.isArray(data.tokens) ? data.tokens.length : 0;
+                }
+                const errorBody = await response.text();
+                lastError = new Error(`Tokenize failed (${response.status}): ${errorBody}`);
+            } catch (e) {
+                lastError = e;
             }
-        } catch {}
-        return Math.ceil(text.length / 3.5);
+            
+            if (attempt < 2) {
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+        }
+
+        console.error('LlamaCpp Tokenize Error:', lastError);
+        // We throw instead of fallback to ensure NIAH tests don't continue with wrong density
+        throw lastError || new Error('Tokenize failed');
     }
 
     private prepareSchema(schema: any): any {

@@ -85,6 +85,16 @@ export interface LLMProviderCapabilities {
     supportsStructuredOutput: boolean;
     isLocalProvider: boolean;
     supportsSpeedMetrics: boolean;
+    /**
+     * True when the provider's context cache holds the content itself on the
+     * server (referenced by name, so the client should OMIT the cached content
+     * from subsequent requests — e.g. Gemini explicit caching). False when the
+     * cache is a prefix-matched KV snapshot and the client MUST still send the
+     * content with every request for the prefix to match (e.g. llama.cpp slot
+     * save/restore). Defaults to true when the field is absent for backwards
+     * compatibility with providers that pre-date this flag.
+     */
+    cacheBakesContent?: boolean;
 }
 
 /**

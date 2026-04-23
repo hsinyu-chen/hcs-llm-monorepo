@@ -45,7 +45,8 @@ export class LlamaCppProvider implements LLMProvider {
             supportsThinking: true,
             supportsStructuredOutput: true,
             isLocalProvider: true,
-            supportsSpeedMetrics: true
+            supportsSpeedMetrics: true,
+            cacheBakesContent: false
         };
     }
 

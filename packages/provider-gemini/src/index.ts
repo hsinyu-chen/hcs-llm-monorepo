@@ -60,7 +60,8 @@ export class GeminiProvider implements LLMProvider {
             supportsThinking: true,
             supportsStructuredOutput: true,
             isLocalProvider: false,
-            supportsSpeedMetrics: false
+            supportsSpeedMetrics: false,
+            cacheBakesContent: true
         };
     }
 

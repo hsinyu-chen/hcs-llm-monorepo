@@ -5,7 +5,8 @@ import {
     LLMContent,
     LLMGenerateConfig,
     LLMStreamChunk,
-    LLMModelDefinition
+    LLMModelDefinition,
+    LLMCacheInfo
 } from '@hcs/llm-core';
 
 export class LlamaCppProvider implements LLMProvider {
@@ -152,6 +153,8 @@ export class LlamaCppProvider implements LLMProvider {
             reasoning_budget: reasoningBudget
         };
 
+        const saveAfterGen = typeof config.cachedContentName === 'string' && config.cachedContentName.length > 0;
+
         try {
             const response = await fetch(`${baseUrl}/v1/chat/completions`, {
                 method: 'POST',
@@ -223,7 +226,28 @@ export class LlamaCppProvider implements LLMProvider {
                     if (done) break;
                 }
             } finally { reader.releaseLock(); }
-        } catch (error) { throw error; }
+        } finally {
+            // Post-gen slot save: if the caller tagged this generation with a
+            // cachedContentName, persist slot 0's KV to that filename so the next
+            // session can restore it and skip PP. Stateless: no pending-save map,
+            // no hash tracking — the caller's presence of cachedContentName IS the
+            // signal. Each turn with the same name overwrites the .bin with the
+            // latest accumulated KV, so restores always resume at the newest state.
+            if (saveAfterGen && !config.signal?.aborted) {
+                try {
+                    const saveRes = await fetch(`${baseUrl}/slots/0?action=save`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ filename: config.cachedContentName })
+                    });
+                    if (!saveRes.ok) {
+                        console.warn(`[LlamaCpp] Slot save failed (${saveRes.status}): ${await saveRes.text()}`);
+                    }
+                } catch (e) {
+                    console.warn('[LlamaCpp] Post-gen slot save threw:', e);
+                }
+            }
+        }
     }
 
     async countTokens(providerConfig: LLMProviderConfig, _modelId: string, contents: LLMContent[]): Promise<number> {
@@ -257,6 +281,126 @@ export class LlamaCppProvider implements LLMProvider {
         console.error('LlamaCpp Tokenize Error:', lastError);
         // We throw instead of fallback to ensure NIAH tests don't continue with wrong density
         throw lastError || new Error('Tokenize failed');
+    }
+
+    // =========================================================================
+    // Context Caching — mapped onto llama.cpp slot save/restore.
+    // Implementation contract (differs from server-side providers like Gemini):
+    //   - createCache():     erases slot 0 and mints a deterministic filename.
+    //                        The .bin does NOT exist until the first generation
+    //                        with this name as cachedContentName completes
+    //                        (post-gen save writes it). Caller calling getCache()
+    //                        between createCache() and the first generate will
+    //                        get null — this is eventual-consistency by design,
+    //                        since saving a synthetic priming request produced
+    //                        token sequences that didn't prefix-match real requests.
+    //   - getCache(name):    POSTs /slots/0?action=restore. On 200, slot 0 is
+    //                        loaded with the .bin's KV — the NEXT generateContentStream
+    //                        will prefix-match against it. On failure, returns null.
+    //   - updateCacheTTL:    no-op (slots have no server-side TTL); returns a stub
+    //                        with a far-future expireTime so countdown UIs display
+    //                        "persistent" rather than decaying to zero.
+    //   - deleteCache(name): POSTs /slots/0?action=erase. NOTE: llama.cpp server
+    //                        exposes no file-delete API, so the .bin on disk is
+    //                        NOT removed. If the same name is createCache()d again
+    //                        later, post-gen save overwrites it.
+    //   - deleteAllCaches:   same as deleteCache (single-slot model); returns 1.
+    // Filename strategy: stable per (baseUrl, modelId) — no content hash. One
+    // .bin per server+model combo, always overwritten in place. This avoids
+    // orphan accumulation; staleness detection is the caller's responsibility.
+    // =========================================================================
+
+    private deriveSlotFilename(baseUrl: string, modelId: string): string {
+        const raw = `${baseUrl}|${modelId}`;
+        let hash = 0;
+        for (let i = 0; i < raw.length; i++) {
+            hash = ((hash << 5) - hash) + raw.charCodeAt(i);
+            hash |= 0;
+        }
+        return `cache_${Math.abs(hash).toString(36)}.bin`;
+    }
+
+    private farFutureExpire(): number {
+        return Date.now() + 365 * 24 * 3600 * 1000;
+    }
+
+    private async eraseSlot(baseUrl: string): Promise<void> {
+        try {
+            await fetch(`${baseUrl}/slots/0?action=erase`, { method: 'POST' });
+        } catch (e) {
+            console.warn('[LlamaCpp] Slot erase failed:', e);
+        }
+    }
+
+    async createCache(
+        config: LLMProviderConfig,
+        modelId: string,
+        _systemInstruction: string,
+        _contents: LLMContent[],
+        _ttlSeconds: number
+    ): Promise<LLMCacheInfo | null> {
+        const { baseUrl } = this.extractConfig(config);
+        const filename = this.deriveSlotFilename(baseUrl, modelId);
+        await this.eraseSlot(baseUrl);
+        return {
+            name: filename,
+            displayName: filename,
+            model: modelId,
+            createTime: Date.now(),
+            expireTime: this.farFutureExpire(),
+            usageMetadata: { totalTokenCount: 0 }
+        };
+    }
+
+    async getCache(config: LLMProviderConfig, name: string): Promise<LLMCacheInfo | null> {
+        const { baseUrl, modelId } = this.extractConfig(config);
+        try {
+            const res = await fetch(`${baseUrl}/slots/0?action=restore`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename: name })
+            });
+            if (!res.ok) return null;
+            const data = await res.json().catch(() => ({}));
+            const restored = data?.n_restored ?? data?.tokens_restored ?? 0;
+            return {
+                name,
+                displayName: name,
+                model: modelId,
+                createTime: undefined,
+                expireTime: this.farFutureExpire(),
+                usageMetadata: { totalTokenCount: restored }
+            };
+        } catch (e) {
+            console.warn('[LlamaCpp] getCache restore failed:', e);
+            return null;
+        }
+    }
+
+    async updateCacheTTL(
+        _config: LLMProviderConfig,
+        name: string,
+        _ttlSeconds: number
+    ): Promise<LLMCacheInfo | null> {
+        return {
+            name,
+            displayName: name,
+            model: this.extractConfig(_config).modelId,
+            createTime: undefined,
+            expireTime: this.farFutureExpire(),
+            usageMetadata: undefined
+        };
+    }
+
+    async deleteCache(config: LLMProviderConfig, _name: string): Promise<void> {
+        const { baseUrl } = this.extractConfig(config);
+        await this.eraseSlot(baseUrl);
+    }
+
+    async deleteAllCaches(config: LLMProviderConfig): Promise<number> {
+        const { baseUrl } = this.extractConfig(config);
+        await this.eraseSlot(baseUrl);
+        return 1;
     }
 
     private prepareSchema(schema: any): any {

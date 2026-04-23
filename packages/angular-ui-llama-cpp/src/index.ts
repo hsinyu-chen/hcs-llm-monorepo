@@ -116,6 +116,12 @@ import { LlamaCppProvider } from '@hcs/llm-provider-llama-cpp';
             </select>
         </div>
       }
+
+      <div class="advanced-divider">PROMPT CACHE (SLOT SAVE)</div>
+      <div class="form-group-toggle">
+          <label title="Persist slot KV to .bin on disk via /slots/0?action=save so the next session can restore and skip prompt processing. Requires starting llama-server with --slot-save-path <dir>.">Persist Slot to Disk:</label>
+          <input type="checkbox" [(ngModel)]="config.settings.additionalSettings!['enableCacheSlot']" (ngModelChange)="configChanged.emit()">
+      </div>
     </div>
   `
 })

@@ -261,11 +261,21 @@ export class GeminiProvider implements LLMProvider {
             ]
         };
 
-        if (config.maxOutputTokens) generationConfig.maxOutputTokens = config.maxOutputTokens;
-        if (config.presence_penalty !== undefined) generationConfig.presencePenalty = config.presence_penalty;
-        
-        if (config.frequency_penalty !== undefined) {
-            generationConfig.frequencyPenalty = config.frequency_penalty;
+        const maxOutputTokens = config.maxOutputTokens || providerConfig.maxOutputTokens;
+        const temperature = config.temperature !== undefined ? config.temperature : providerConfig.temperature;
+        const topP = providerConfig.additionalSettings?.['topP'];
+        const topK = providerConfig.additionalSettings?.['topK'];
+        const presencePenalty = config.presence_penalty !== undefined ? config.presence_penalty : providerConfig.presence_penalty;
+        const frequencyPenalty = config.frequency_penalty !== undefined ? config.frequency_penalty : providerConfig.frequency_penalty;
+
+        if (maxOutputTokens) generationConfig.maxOutputTokens = maxOutputTokens;
+        if (temperature !== undefined) generationConfig.temperature = temperature as number;
+        if (topP !== undefined) generationConfig.topP = topP as number;
+        if (topK !== undefined) generationConfig.topK = topK as number;
+        if (presencePenalty !== undefined) generationConfig.presencePenalty = presencePenalty as number;
+
+        if (frequencyPenalty !== undefined) {
+            generationConfig.frequencyPenalty = frequencyPenalty as number;
         } else if (isLegacyModel) {
             generationConfig.frequencyPenalty = 0.2;
         }

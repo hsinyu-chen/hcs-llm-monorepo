@@ -7,7 +7,10 @@ import {
     Injector, 
     Type, 
     ComponentRef,
-    InjectionToken
+    InjectionToken,
+    OnInit,
+    OnDestroy,
+    input
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -31,8 +34,9 @@ import {
     templateUrl: './llm-settings.component.html',
     styleUrl: './llm-settings.component.scss'
 })
-export class LLMSettingsComponent {
+export class LLMSettingsComponent implements OnInit, OnDestroy {
     settingsClosed = output<void>();
+    showPricing = input<boolean>(true);
 
     // These should be provided in the app root or via a module
     private manager = inject(LLMManager);
@@ -42,6 +46,8 @@ export class LLMSettingsComponent {
     // I18n bridge
     private customTranslations = inject(LLM_TRANSLATIONS, { optional: true });
     public i18n = computed(() => this.customTranslations || DEFAULT_LLM_TRANSLATIONS);
+    
+    private unsubscribe?: () => void;
 
     // Available Providers (could also be fetched from registry)
     providers = [
@@ -53,12 +59,13 @@ export class LLMSettingsComponent {
     // List of configs - we manually sync with storage since it's now pure TS
     configs = signal<LLMConfig[]>([]);
 
-    constructor() {
+    ngOnInit() {
         this.loadConfigs();
-        // Setup listener if storage supports it
-        if (this.storage.onChanged) {
-            this.storage.onChanged = (newConfigs) => this.configs.set(newConfigs);
-        }
+        this.unsubscribe = this.storage.subscribe((newConfigs) => this.configs.set(newConfigs));
+    }
+
+    ngOnDestroy() {
+        this.unsubscribe?.();
     }
 
     async loadConfigs() {
@@ -125,6 +132,8 @@ export class LLMSettingsComponent {
     costTrigger = signal(0);
     modelPricing = computed(() => {
         this.costTrigger(); // Dependency
+        if (!this.showPricing()) return null;
+        
         const config = this.editingConfig();
         if (!config) return null;
 
@@ -183,6 +192,14 @@ export class LLMSettingsComponent {
         this.testStatus.set('');
     }
 
+    copyConfig(config: LLMConfig) {
+        const cloned = JSON.parse(JSON.stringify(config));
+        cloned.id = crypto.randomUUID();
+        cloned.name = `${cloned.name} (Copy)`;
+        this.editingConfig.set(cloned);
+        this.testStatus.set('');
+    }
+
     async saveConfig() {
         const config = this.editingConfig();
         if (config) {
@@ -199,7 +216,7 @@ export class LLMSettingsComponent {
         const instance = ref.instance;
         if (instance.configChanged) {
             instance.configChanged.subscribe(() => {
-                this.costTrigger.update(v => v + 1);
+                this.costTrigger.update((v: number) => v + 1);
             });
         }
     }

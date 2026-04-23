@@ -11,6 +11,13 @@ export interface ILLMStorage {
     
     // For reactive updates (Simple event system substitute for signals)
     onChanged?: (configs: LLMConfig[]) => void;
+    
+    /**
+     * Subscribe to changes in the storage.
+     * @param callback Function to call when configs change.
+     * @returns Unsubscribe function.
+     */
+    subscribe(callback: (configs: LLMConfig[]) => void): () => void;
 }
 
 /**
@@ -21,10 +28,29 @@ export class BrowserIndexedDBStorage implements ILLMStorage {
     private storeName = 'configs';
     private db: IDBDatabase | null = null;
     
+    private listeners: ((configs: LLMConfig[]) => void)[] = [];
     onChanged?: (configs: LLMConfig[]) => void;
 
     constructor(dbName?: string) {
         if (dbName) this.dbName = dbName;
+    }
+
+    subscribe(callback: (configs: LLMConfig[]) => void): () => void {
+        this.listeners.push(callback);
+        // Initial trigger with current state if possible, though getAll is async
+        return () => {
+            this.listeners = this.listeners.filter(l => l !== callback);
+        };
+    }
+
+    private async notifyListeners() {
+        const configs = await this.getAll();
+        if (this.onChanged) {
+            this.onChanged(configs);
+        }
+        for (const listener of this.listeners) {
+            listener(configs);
+        }
     }
 
     private async initDB(): Promise<IDBDatabase> {
@@ -83,10 +109,7 @@ export class BrowserIndexedDBStorage implements ILLMStorage {
         return new Promise((resolve, reject) => {
             const request = store.put(config);
             request.onsuccess = async () => {
-                if (this.onChanged) {
-                    const all = await this.getAll();
-                    this.onChanged(all);
-                }
+                await this.notifyListeners();
                 resolve();
             };
             request.onerror = () => reject(request.error);
@@ -98,10 +121,7 @@ export class BrowserIndexedDBStorage implements ILLMStorage {
         return new Promise((resolve, reject) => {
             const request = store.delete(id);
             request.onsuccess = async () => {
-                if (this.onChanged) {
-                    const all = await this.getAll();
-                    this.onChanged(all);
-                }
+                await this.notifyListeners();
                 resolve();
             };
             request.onerror = () => reject(request.error);

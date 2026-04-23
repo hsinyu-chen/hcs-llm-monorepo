@@ -26,6 +26,7 @@ export interface LLMGenerateConfig {
     toolConfig?: object;
     intent?: string;
     maxOutputTokens?: number;
+    temperature?: number;
     frequency_penalty?: number;
     presence_penalty?: number;
     signal?: AbortSignal;

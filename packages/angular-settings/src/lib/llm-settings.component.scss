@@ -95,6 +95,7 @@
 
 .form-group {
     margin-bottom: 20px;
+    min-width: 0; // grid item hardening: allow shrinking below input min-content
     label {
         display: block;
         margin-bottom: 8px;
@@ -103,6 +104,8 @@
     }
     input, select {
         width: 100%;
+        min-width: 0; // <input> default min-content is ~20ch; without this it pushes the grid track wider than the dialog and triggers horizontal scroll.
+        box-sizing: border-box;
         background: #2a2a2a;
         border: 1px solid #3d3d3d;
         border-radius: 6px;
@@ -116,10 +119,13 @@
 .form-grid {
     display: grid;
     gap: 16px;
+    min-width: 0;
+    & > * { min-width: 0; } // same grid-item hardening as above for direct children
     &.columns-2 { grid-template-columns: 1fr 1fr; }
 }
 
 .form-group-vertical {
+    min-width: 0;
     label {
         display: block;
         margin-bottom: 4px;
@@ -128,6 +134,8 @@
     }
     input {
         width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
         background: #2a2a2a;
         border: 1px solid #3d3d3d;
         border-radius: 4px;

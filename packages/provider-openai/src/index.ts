@@ -49,18 +49,38 @@ export class OpenAIProvider implements LLMProvider {
 
     getAvailableModels(config: LLMProviderConfig): LLMModelDefinition[] | Promise<LLMModelDefinition[]> {
         const c = this.extractConfig(config);
-        const id = c.modelId;
-        return [
-            {
-                id: id,
-                name: `OpenAI: ${id}`,
-                getRates: () => ({
-                    input: c.inputPrice ?? 0,
-                    cached: c.cacheInputPrice ?? 0,
-                    output: c.outputPrice ?? 0
-                })
-            }
+        const rates = () => ({
+            input: c.inputPrice ?? 0,
+            cached: c.cacheInputPrice ?? 0,
+            output: c.outputPrice ?? 0
+        });
+
+        // Known public OpenAI context sizes. Pricing is intentionally left to
+        // user-entered values because the OpenAI provider is used for any
+        // OpenAI-compatible endpoint (OpenRouter, Together, local proxies, …)
+        // where the rate card differs from the upstream.
+        const presets: LLMModelDefinition[] = [
+            { id: 'gpt-4o',        name: 'GPT-4o',        contextSize: 128_000, getRates: rates },
+            { id: 'gpt-4o-mini',   name: 'GPT-4o mini',   contextSize: 128_000, getRates: rates },
+            { id: 'gpt-4-turbo',   name: 'GPT-4 Turbo',   contextSize: 128_000, getRates: rates },
+            { id: 'gpt-4',         name: 'GPT-4',         contextSize: 8_192,   getRates: rates },
+            { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', contextSize: 16_385,  getRates: rates },
+            { id: 'o1',            name: 'o1',            contextSize: 200_000, getRates: rates },
+            { id: 'o1-mini',       name: 'o1 mini',       contextSize: 128_000, getRates: rates },
+            { id: 'o3-mini',       name: 'o3 mini',       contextSize: 200_000, getRates: rates }
         ];
+
+        // Surface the user-typed custom model id if it doesn't match a preset
+        // so the cost / model-lookup pipeline resolves it.
+        if (c.modelId && !presets.find(p => p.id === c.modelId)) {
+            presets.push({
+                id: c.modelId,
+                name: `Custom: ${c.modelId}`,
+                getRates: rates
+            });
+        }
+
+        return presets;
     }
 
     getDefaultModelId(): string {

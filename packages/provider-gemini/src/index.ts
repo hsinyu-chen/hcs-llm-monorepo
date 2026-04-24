@@ -70,6 +70,7 @@ export class GeminiProvider implements LLMProvider {
             {
                 id: 'gemini-3.1-pro-preview',
                 name: 'Gemini 3.1 Pro Preview',
+                contextSize: 1_048_576,
                 supportsThinking: true,
                 allowedThinkingLevels: ['low', 'high'],
                 getRates: (prompt = 0) => {
@@ -85,6 +86,7 @@ export class GeminiProvider implements LLMProvider {
             {
                 id: 'gemini-3-pro-preview',
                 name: 'Gemini 3 Pro Preview',
+                contextSize: 1_048_576,
                 supportsThinking: true,
                 allowedThinkingLevels: ['low', 'high'],
                 getRates: (prompt = 0) => {
@@ -100,6 +102,7 @@ export class GeminiProvider implements LLMProvider {
             {
                 id: 'gemini-3-flash-preview',
                 name: 'Gemini 3 Flash Preview',
+                contextSize: 1_048_576,
                 supportsThinking: true,
                 allowedThinkingLevels: ['minimal', 'low', 'medium', 'high'],
                 getRates: () => ({
@@ -112,6 +115,7 @@ export class GeminiProvider implements LLMProvider {
             {
                 id: 'gemini-3.1-flash-lite-preview',
                 name: 'Gemini 3.1 Flash Lite Preview',
+                contextSize: 1_048_576,
                 supportsThinking: true,
                 allowedThinkingLevels: ['minimal', 'low', 'medium', 'high'],
                 getRates: () => ({
@@ -124,6 +128,7 @@ export class GeminiProvider implements LLMProvider {
             {
                 id: 'gemini-2.5-flash-lite',
                 name: 'Gemini 2.5 Flash-Lite',
+                contextSize: 1_048_576,
                 supportsThinking: true,
                 thinkingBudgetLevelMapping: {
                     minimal: 1024,
@@ -141,6 +146,7 @@ export class GeminiProvider implements LLMProvider {
             {
                 id: 'gemini-2.5-flash',
                 name: 'Gemini 2.5 Flash',
+                contextSize: 1_048_576,
                 supportsThinking: true,
                 thinkingBudgetLevelMapping: {
                     minimal: 1024,

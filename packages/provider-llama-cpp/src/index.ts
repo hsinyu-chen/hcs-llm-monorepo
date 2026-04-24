@@ -52,15 +52,18 @@ export class LlamaCppProvider implements LLMProvider {
 
     async getAvailableModels(config: LLMProviderConfig): Promise<LLMModelDefinition[]> {
         const c = this.extractConfig(config);
-        
-        // Always try to fetch current model from server to ensure 'Refresh' works
-        const alias = await this.fetchModelAlias(c.baseUrl);
-        const modelId = alias || c.modelId || 'local-model';
+
+        // Fetch both the model alias and the context window from /props in
+        // one round trip; both are dynamic (depend on how the server was
+        // launched) so we can't bake them into a static preset.
+        const props = await this.fetchProps(c.baseUrl);
+        const modelId = props.modelAlias || c.modelId || 'local-model';
 
         return [
             {
                 id: modelId,
                 name: `Local Model (${modelId})`,
+                contextSize: props.contextSize ?? undefined,
                 getRates: () => ({
                     input: c.inputPrice ?? 0,
                     output: c.outputPrice ?? 0,
@@ -71,18 +74,36 @@ export class LlamaCppProvider implements LLMProvider {
         ];
     }
 
-    private async fetchModelAlias(baseUrl: string): Promise<string | null> {
+    private async fetchProps(baseUrl: string): Promise<{ modelAlias: string | null; contextSize: number | null }> {
         try {
             const response = await fetch(`${baseUrl}/props`);
-            if (response.ok) {
-                const data = await response.json();
-                if (data.model_alias) return data.model_alias;
-                if (data.model_path) {
-                    return data.model_path.split(/[/\\]/).pop() || data.model_path;
-                }
+            if (!response.ok) return { modelAlias: null, contextSize: null };
+            const data = await response.json();
+
+            let modelAlias: string | null = null;
+            if (data.model_alias) {
+                modelAlias = data.model_alias;
+            } else if (data.model_path) {
+                modelAlias = String(data.model_path).split(/[/\\]/).pop() || data.model_path;
             }
-        } catch {}
-        return null;
+
+            // llama.cpp server reports context size in a few historical
+            // locations depending on version — try them in order.
+            const rawCtx =
+                data.n_ctx ??
+                data.default_generation_settings?.n_ctx ??
+                data.default_generation_settings?.params?.n_ctx ??
+                null;
+            const contextSize = typeof rawCtx === 'number' && rawCtx > 0 ? rawCtx : null;
+
+            return { modelAlias, contextSize };
+        } catch {
+            return { modelAlias: null, contextSize: null };
+        }
+    }
+
+    private async fetchModelAlias(baseUrl: string): Promise<string | null> {
+        return (await this.fetchProps(baseUrl)).modelAlias;
     }
 
     getDefaultModelId(): string {

@@ -77,6 +77,15 @@ export interface LLMModelDefinition {
     supportsThinking?: boolean;
     allowedThinkingLevels?: string[];
     thinkingBudgetLevelMapping?: Record<string, number>;
+    /**
+     * Context window in tokens. For cloud providers this is a fixed
+     * per-model value bundled in the preset; for local providers (llama.cpp)
+     * it is discovered at runtime from the server's /props endpoint.
+     * Callers that want to display a "context usage" bar should read this;
+     * undefined/omitted means the window is unknown and UI should hide the
+     * bar.
+     */
+    contextSize?: number;
 }
 
 export interface LLMProviderCapabilities {

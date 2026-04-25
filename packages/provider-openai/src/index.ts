@@ -3,10 +3,17 @@ import {
     LLMProviderCapabilities,
     LLMProviderConfig,
     LLMContent,
+    LLMFunctionCall,
     LLMGenerateConfig,
     LLMStreamChunk,
     LLMModelDefinition
 } from '@hcs/llm-core';
+
+interface OpenAIToolCallAccumulator {
+    id: string;
+    name: string;
+    argsBuffer: string;
+}
 
 export class OpenAIProvider implements LLMProvider {
     readonly providerName = 'openai';
@@ -43,8 +50,75 @@ export class OpenAIProvider implements LLMProvider {
             supportsThinking: false,
             supportsStructuredOutput: true,
             isLocalProvider: false,
-            supportsSpeedMetrics: false
+            supportsSpeedMetrics: false,
+            supportsNativeToolCalls: true
         };
+    }
+
+    /**
+     * Convert LLMContent[] to OpenAI chat-completions messages, expanding
+     * function-call/response parts into native `tool_calls` (assistant) and
+     * `role:'tool'` messages. A single LLMContent that mixes text and tool
+     * calls is split into multiple OpenAI messages preserving original order.
+     */
+    private toOpenAIMessages(systemInstruction: string, contents: LLMContent[]): any[] {
+        const messages: any[] = [];
+        if (systemInstruction) {
+            messages.push({ role: 'system', content: systemInstruction });
+        }
+
+        for (const con of contents) {
+            const role = con.role === 'model' ? 'assistant' : con.role;
+
+            if (role === 'user') {
+                // User messages may carry functionResponse parts (tool results).
+                // Each functionResponse becomes its own role:'tool' message.
+                const textParts: string[] = [];
+                for (const p of con.parts) {
+                    if (p.functionResponse) {
+                        messages.push({
+                            role: 'tool',
+                            tool_call_id: p.functionResponse.id || p.functionResponse.name,
+                            content: typeof p.functionResponse.response === 'string'
+                                ? p.functionResponse.response
+                                : JSON.stringify(p.functionResponse.response)
+                        });
+                    } else if (p.text) {
+                        textParts.push(p.text);
+                    }
+                }
+                if (textParts.length > 0) {
+                    messages.push({ role: 'user', content: textParts.join('\n') });
+                }
+                continue;
+            }
+
+            // assistant: may carry text + functionCall parts together.
+            const textParts: string[] = [];
+            const toolCalls: any[] = [];
+            for (const p of con.parts) {
+                if (p.thought) continue; // OpenAI has no analogue for thought parts.
+                if (p.functionCall) {
+                    toolCalls.push({
+                        id: p.functionCall.id || `call_${toolCalls.length}_${p.functionCall.name}`,
+                        type: 'function',
+                        function: {
+                            name: p.functionCall.name,
+                            arguments: JSON.stringify(p.functionCall.args ?? {})
+                        }
+                    });
+                } else if (p.text) {
+                    textParts.push(p.text);
+                }
+            }
+            const msg: any = { role: 'assistant' };
+            if (textParts.length > 0) msg.content = textParts.join('\n');
+            else if (toolCalls.length > 0) msg.content = null;
+            if (toolCalls.length > 0) msg.tool_calls = toolCalls;
+            messages.push(msg);
+        }
+
+        return messages;
     }
 
     getAvailableModels(config: LLMProviderConfig): LLMModelDefinition[] | Promise<LLMModelDefinition[]> {
@@ -97,13 +171,18 @@ export class OpenAIProvider implements LLMProvider {
         const baseUrl = c.baseUrl;
         const apiKey = c.apiKey;
 
-        const messages = [
-            { role: 'system', content: systemInstruction },
-            ...contents.map(con => ({
-                role: con.role === 'model' ? 'assistant' : con.role,
-                content: con.parts.map(p => p.text || '').join('\n')
+        const messages = this.toOpenAIMessages(systemInstruction, contents);
+
+        const tools = config.tools && config.tools.length > 0
+            ? config.tools.map(t => ({
+                type: 'function',
+                function: {
+                    name: t.name,
+                    description: t.description,
+                    parameters: t.parameters
+                }
             }))
-        ];
+            : undefined;
 
         const requestBody: Record<string, unknown> = {
             model: c.modelId,
@@ -114,7 +193,9 @@ export class OpenAIProvider implements LLMProvider {
             ...(c.frequencyPenalty != null ? { frequency_penalty: c.frequencyPenalty } : {}),
             ...(c.presencePenalty != null ? { presence_penalty: c.presencePenalty } : {}),
             ...(c.maxOutputTokens != null ? { max_tokens: c.maxOutputTokens } : {}),
-            ...(config.responseSchema ? {
+            ...(tools ? { tools } : {}),
+            ...(config.toolConfig ? { tool_choice: config.toolConfig } : {}),
+            ...(config.responseSchema && !tools ? {
                 response_format: {
                     type: 'json_schema',
                     json_schema: {
@@ -155,6 +236,7 @@ export class OpenAIProvider implements LLMProvider {
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let buffer = '';
+            const toolCallAcc: Record<number, OpenAIToolCallAccumulator> = {};
 
             try {
                 while (true) {
@@ -173,6 +255,7 @@ export class OpenAIProvider implements LLMProvider {
                         try {
                             const data = JSON.parse(trimmed.slice(6));
                             const delta = data.choices?.[0]?.delta;
+                            const finishReason = data.choices?.[0]?.finish_reason;
 
                             if (delta?.content) {
                                 yield { text: delta.content };
@@ -180,6 +263,23 @@ export class OpenAIProvider implements LLMProvider {
 
                             if (delta?.reasoning_content) {
                                 yield { text: delta.reasoning_content, thought: true };
+                            }
+
+                            if (Array.isArray(delta?.tool_calls)) {
+                                for (const tc of delta.tool_calls) {
+                                    const idx = tc.index ?? 0;
+                                    const acc = toolCallAcc[idx] ??= { id: '', name: '', argsBuffer: '' };
+                                    if (tc.id) acc.id = tc.id;
+                                    if (tc.function?.name) acc.name = tc.function.name;
+                                    if (tc.function?.arguments) acc.argsBuffer += tc.function.arguments;
+                                }
+                            }
+
+                            if (finishReason === 'tool_calls' || (finishReason && Object.keys(toolCallAcc).length > 0)) {
+                                for (const acc of Object.values(toolCallAcc)) {
+                                    yield { functionCall: this.finalizeToolCall(acc) };
+                                }
+                                for (const k of Object.keys(toolCallAcc)) delete toolCallAcc[k as unknown as number];
                             }
 
                             if (data.usage) {
@@ -195,6 +295,11 @@ export class OpenAIProvider implements LLMProvider {
                         } catch {}
                     }
                 }
+
+                // Flush any remaining tool_calls if the stream ended without a finish_reason event.
+                for (const acc of Object.values(toolCallAcc)) {
+                    yield { functionCall: this.finalizeToolCall(acc) };
+                }
             } finally {
                 reader.releaseLock();
             }
@@ -207,6 +312,15 @@ export class OpenAIProvider implements LLMProvider {
     async countTokens(providerConfig: LLMProviderConfig, _modelId: string, contents: LLMContent[]): Promise<number> {
         const text = contents.flatMap(c => c.parts).map(p => p.text || '').join('\n');
         return Math.ceil(text.length / 4);
+    }
+
+    private finalizeToolCall(acc: OpenAIToolCallAccumulator): LLMFunctionCall {
+        let parsed: Record<string, unknown> = {};
+        if (acc.argsBuffer) {
+            try { parsed = JSON.parse(acc.argsBuffer); }
+            catch { parsed = { _raw: acc.argsBuffer }; }
+        }
+        return { id: acc.id || undefined, name: acc.name, args: parsed };
     }
 
     private prepareSchema(schema: any): any {

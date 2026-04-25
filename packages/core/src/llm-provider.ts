@@ -10,19 +10,40 @@ export interface LLMContent {
     parts: LLMPart[];
 }
 
+export interface LLMFunctionCall {
+    /** Required for OpenAI-style providers that thread tool_call_id through tool responses. Optional for Gemini (which does not need correlation ids). */
+    id?: string;
+    name: string;
+    args: Record<string, unknown>;
+}
+
+export interface LLMFunctionResponse {
+    /** Echoed from the originating LLMFunctionCall.id when present. Required for OpenAI threading; ignored by Gemini. */
+    id?: string;
+    name: string;
+    response: Record<string, unknown>;
+}
+
+export interface LLMFunctionDeclaration {
+    name: string;
+    description: string;
+    /** JSON Schema describing the tool's argument object. */
+    parameters: object;
+}
+
 export interface LLMPart {
     text?: string;
     thought?: boolean;
     thoughtSignature?: string;
-    functionCall?: object;
-    functionResponse?: object;
+    functionCall?: LLMFunctionCall;
+    functionResponse?: LLMFunctionResponse;
 }
 
 export interface LLMGenerateConfig {
     responseSchema?: object;
     responseMimeType?: string;
     cachedContentName?: string;
-    tools?: object[];
+    tools?: LLMFunctionDeclaration[];
     toolConfig?: object;
     intent?: string;
     maxOutputTokens?: number;
@@ -50,7 +71,7 @@ export interface LLMStreamChunk {
     thought?: boolean;
     thoughtSignature?: string;
     usageMetadata?: LLMUsageMetadata;
-    functionCall?: object;
+    functionCall?: LLMFunctionCall;
     finishReason?: string;
 }
 
@@ -104,6 +125,16 @@ export interface LLMProviderCapabilities {
      * compatibility with providers that pre-date this flag.
      */
     cacheBakesContent?: boolean;
+    /**
+     * True when the provider can route LLMGenerateConfig.tools to the model's
+     * native function-calling API and stream back LLMFunctionCall chunks.
+     * Callers may still fall back to JSON-schema (responseSchema) prompting
+     * when this is false or when a profile explicitly opts out.
+     * For local providers this depends on the loaded model's chat template
+     * supporting tool calls (Hermes / Llama 3.1+ / Qwen 2.5 / Mistral, …);
+     * mismatched models will silently degrade to plain text output.
+     */
+    supportsNativeToolCalls?: boolean;
 }
 
 /**

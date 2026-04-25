@@ -19,6 +19,7 @@ import {
     LLMProviderConfig,
     LLMContent,
     LLMPart,
+    LLMFunctionDeclaration,
     LLMGenerateConfig,
     LLMStreamChunk,
     LLMModelDefinition,
@@ -49,8 +50,18 @@ export class GeminiProvider implements LLMProvider {
     private toGeminiPart(part: LLMPart): Part {
         const result: Part = {};
         if (part.text !== undefined) result.text = part.text;
-        if (part.functionCall) result.functionCall = part.functionCall as Part['functionCall'];
-        if (part.functionResponse) result.functionResponse = part.functionResponse as Part['functionResponse'];
+        if (part.functionCall) {
+            result.functionCall = {
+                name: part.functionCall.name,
+                args: part.functionCall.args
+            };
+        }
+        if (part.functionResponse) {
+            result.functionResponse = {
+                name: part.functionResponse.name,
+                response: part.functionResponse.response
+            };
+        }
         return result;
     }
 
@@ -61,8 +72,20 @@ export class GeminiProvider implements LLMProvider {
             supportsStructuredOutput: true,
             isLocalProvider: false,
             supportsSpeedMetrics: false,
-            cacheBakesContent: true
+            cacheBakesContent: true,
+            supportsNativeToolCalls: true
         };
+    }
+
+    private buildToolsParam(tools: LLMFunctionDeclaration[] | undefined): Tool[] {
+        if (!tools || tools.length === 0) return this.defaultTools;
+        return [{
+            functionDeclarations: tools.map(t => ({
+                name: t.name,
+                description: t.description,
+                parameters: t.parameters as Schema
+            }))
+        }];
     }
 
     getAvailableModels(config: LLMProviderConfig): LLMModelDefinition[] | Promise<LLMModelDefinition[]> {
@@ -199,11 +222,15 @@ export class GeminiProvider implements LLMProvider {
             if (candidate?.content?.parts) {
                 for (const part of candidate.content.parts) {
                     const extPart = part as Part & { thought?: boolean; thoughtSignature?: string };
+                    const fc = extPart.functionCall;
                     yield {
                         text: extPart.text,
                         thought: extPart.thought,
                         thoughtSignature: extPart.thoughtSignature,
-                        functionCall: extPart.functionCall as object | undefined,
+                        functionCall: fc ? {
+                            name: fc.name ?? '',
+                            args: (fc.args ?? {}) as Record<string, unknown>
+                        } : undefined,
                         finishReason,
                         usageMetadata: chunk.usageMetadata ? {
                             prompt: chunk.usageMetadata.promptTokenCount || 0,
@@ -306,7 +333,7 @@ export class GeminiProvider implements LLMProvider {
         if (cachedContentName) {
             generationConfig.cachedContent = cachedContentName;
         } else {
-            generationConfig.tools = this.defaultTools;
+            generationConfig.tools = this.buildToolsParam(config.tools);
         }
 
         if (responseSchema) generationConfig.responseMimeType = "application/json";

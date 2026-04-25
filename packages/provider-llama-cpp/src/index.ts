@@ -3,11 +3,18 @@ import {
     LLMProviderCapabilities,
     LLMProviderConfig,
     LLMContent,
+    LLMFunctionCall,
     LLMGenerateConfig,
     LLMStreamChunk,
     LLMModelDefinition,
     LLMCacheInfo
 } from '@hcs/llm-core';
+
+interface LlamaCppToolCallAccumulator {
+    id: string;
+    name: string;
+    argsBuffer: string;
+}
 
 export class LlamaCppProvider implements LLMProvider {
     readonly providerName = 'llama.cpp';
@@ -46,8 +53,82 @@ export class LlamaCppProvider implements LLMProvider {
             supportsStructuredOutput: true,
             isLocalProvider: true,
             supportsSpeedMetrics: true,
-            cacheBakesContent: false
+            cacheBakesContent: false,
+            // True at the provider layer — actual support depends on whether the
+            // currently-loaded GGUF's chat template handles tool calling
+            // (Hermes-2-Pro / Llama-3.1+ / Qwen 2.5+ / Mistral, etc.).
+            // Models without tool-aware templates will silently emit plain
+            // text, in which case the caller should fall back to JSON-schema mode.
+            supportsNativeToolCalls: true
         };
+    }
+
+    /**
+     * Convert LLMContent[] to OpenAI-compatible chat messages for llama.cpp's
+     * /v1/chat/completions endpoint. Identical contract to the OpenAI provider:
+     * functionCall parts become assistant.tool_calls, functionResponse parts
+     * become role:'tool' messages.
+     */
+    private toOpenAIMessages(systemInstruction: string, contents: LLMContent[]): any[] {
+        const messages: any[] = [];
+        if (systemInstruction) messages.push({ role: 'system', content: systemInstruction });
+
+        for (const con of contents) {
+            const role = con.role === 'model' ? 'assistant' : con.role;
+
+            if (role === 'user') {
+                const textParts: string[] = [];
+                for (const p of con.parts) {
+                    if (p.functionResponse) {
+                        messages.push({
+                            role: 'tool',
+                            tool_call_id: p.functionResponse.id || p.functionResponse.name,
+                            content: typeof p.functionResponse.response === 'string'
+                                ? p.functionResponse.response
+                                : JSON.stringify(p.functionResponse.response)
+                        });
+                    } else if (p.text) {
+                        textParts.push(p.text);
+                    }
+                }
+                if (textParts.length > 0) messages.push({ role: 'user', content: textParts.join('\n') });
+                continue;
+            }
+
+            const textParts: string[] = [];
+            const toolCalls: any[] = [];
+            for (const p of con.parts) {
+                if (p.thought) continue;
+                if (p.functionCall) {
+                    toolCalls.push({
+                        id: p.functionCall.id || `call_${toolCalls.length}_${p.functionCall.name}`,
+                        type: 'function',
+                        function: {
+                            name: p.functionCall.name,
+                            arguments: JSON.stringify(p.functionCall.args ?? {})
+                        }
+                    });
+                } else if (p.text) {
+                    textParts.push(p.text);
+                }
+            }
+            const msg: any = { role: 'assistant' };
+            if (textParts.length > 0) msg.content = textParts.join('\n');
+            else if (toolCalls.length > 0) msg.content = null;
+            if (toolCalls.length > 0) msg.tool_calls = toolCalls;
+            messages.push(msg);
+        }
+
+        return messages;
+    }
+
+    private finalizeToolCall(acc: LlamaCppToolCallAccumulator): LLMFunctionCall {
+        let parsed: Record<string, unknown> = {};
+        if (acc.argsBuffer) {
+            try { parsed = JSON.parse(acc.argsBuffer); }
+            catch { parsed = { _raw: acc.argsBuffer }; }
+        }
+        return { id: acc.id || undefined, name: acc.name, args: parsed };
     }
 
     async getAvailableModels(config: LLMProviderConfig): Promise<LLMModelDefinition[]> {
@@ -125,13 +206,7 @@ export class LlamaCppProvider implements LLMProvider {
             if (alias) modelId = alias;
         }
 
-        const messages: any[] = [
-            ...(systemInstruction ? [{ role: 'system', content: systemInstruction }] : []),
-            ...contents.map(con => ({
-                role: con.role === 'model' ? 'assistant' : con.role,
-                content: con.parts.map(p => p.text || '').join('\n')
-            }))
-        ];
+        const messages = this.toOpenAIMessages(systemInstruction, contents);
 
         let n_keep = -1;
         try {
@@ -145,6 +220,17 @@ export class LlamaCppProvider implements LLMProvider {
         const reasoningBudgetMap: Record<string, number> = { low: 512, medium: 2048, high: 8192 };
         const thinkingEnabled = c.enableThinking;
         const reasoningBudget = thinkingEnabled ? (reasoningBudgetMap[c.reasoningEffort] ?? 2048) : 0;
+
+        const tools = config.tools && config.tools.length > 0
+            ? config.tools.map(t => ({
+                type: 'function',
+                function: {
+                    name: t.name,
+                    description: t.description,
+                    parameters: t.parameters
+                }
+            }))
+            : undefined;
 
         const requestBody: Record<string, unknown> = {
             model: modelId,
@@ -161,7 +247,9 @@ export class LlamaCppProvider implements LLMProvider {
             ...(c.topK != null ? { top_k: c.topK } : {}),
             ...(c.minP != null ? { min_p: c.minP } : {}),
             ...(c.repetitionPenalty != null ? { repetition_penalty: c.repetitionPenalty } : {}),
-            ...(config.responseSchema ? {
+            ...(tools ? { tools } : {}),
+            ...(config.toolConfig ? { tool_choice: config.toolConfig } : {}),
+            ...(config.responseSchema && !tools ? {
                 response_format: {
                     type: 'json_schema',
                     json_schema: {
@@ -206,6 +294,7 @@ export class LlamaCppProvider implements LLMProvider {
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let buffer = '';
+            const toolCallAcc: Record<number, LlamaCppToolCallAccumulator> = {};
 
             try {
                 while (true) {
@@ -222,8 +311,26 @@ export class LlamaCppProvider implements LLMProvider {
                         try {
                             const data = JSON.parse(trimmed.slice(6));
                             const delta = data.choices?.[0]?.delta;
+                            const finishReason = data.choices?.[0]?.finish_reason;
                             if (delta?.content) yield { text: delta.content };
                             if (delta?.reasoning_content) yield { text: delta.reasoning_content, thought: true };
+
+                            if (Array.isArray(delta?.tool_calls)) {
+                                for (const tc of delta.tool_calls) {
+                                    const idx = tc.index ?? 0;
+                                    const acc = toolCallAcc[idx] ??= { id: '', name: '', argsBuffer: '' };
+                                    if (tc.id) acc.id = tc.id;
+                                    if (tc.function?.name) acc.name = tc.function.name;
+                                    if (tc.function?.arguments) acc.argsBuffer += tc.function.arguments;
+                                }
+                            }
+
+                            if (finishReason === 'tool_calls' || (finishReason && Object.keys(toolCallAcc).length > 0)) {
+                                for (const acc of Object.values(toolCallAcc)) {
+                                    yield { functionCall: this.finalizeToolCall(acc) };
+                                }
+                                for (const k of Object.keys(toolCallAcc)) delete toolCallAcc[k as unknown as number];
+                            }
 
                             if (data.usage || data.timings || data.prompt_progress) {
                                 const usage = data.usage;
@@ -246,6 +353,11 @@ export class LlamaCppProvider implements LLMProvider {
                         } catch {}
                     }
                     if (done) break;
+                }
+
+                // Flush any remaining tool_calls if the stream ended without a finish_reason event.
+                for (const acc of Object.values(toolCallAcc)) {
+                    yield { functionCall: this.finalizeToolCall(acc) };
                 }
             } finally { reader.releaseLock(); }
         } finally {

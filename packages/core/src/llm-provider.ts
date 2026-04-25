@@ -135,6 +135,14 @@ export interface LLMProviderCapabilities {
      * mismatched models will silently degrade to plain text output.
      */
     supportsNativeToolCalls?: boolean;
+    /**
+     * True when the model can emit multiple tool calls in a single turn
+     * (the agent loop sends N tool responses back as one user message,
+     * saving N-1 LLM round-trips). Implies supportsNativeToolCalls.
+     * For local providers this depends on the chat template — read from
+     * /props chat_template_caps.supports_parallel_tool_calls when available.
+     */
+    supportsParallelToolCalls?: boolean;
 }
 
 /**
@@ -171,6 +179,12 @@ export interface LLMProvider {
      * `/props` to detect tool-aware GGUFs.
      */
     probeNativeToolSupport?(config: LLMProviderConfig): Promise<boolean>;
+    /**
+     * Optional async probe for parallel tool-calling support, separate from
+     * probeNativeToolSupport so callers can independently degrade.
+     * Implementations should follow the same cheap/tolerant contract.
+     */
+    probeParallelToolSupport?(config: LLMProviderConfig): Promise<boolean>;
     getAvailableModels(config: LLMProviderConfig): LLMModelDefinition[] | Promise<LLMModelDefinition[]>;
     getDefaultModelId(): string;
     getPreview?(contents: LLMContent[]): LLMContent[];

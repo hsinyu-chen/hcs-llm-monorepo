@@ -51,13 +51,21 @@ export class OpenAIProvider implements LLMProvider {
         // (api.openai.com, OpenRouter, Together) all support tools.
         const flag = config?.additionalSettings?.['supportsNativeToolCalls'];
         const supportsNativeToolCalls = typeof flag === 'boolean' ? flag : true;
+        // Parallel tool calls follow the same default — modern OpenAI models
+        // and major proxies support them; users can pin No on legacy
+        // endpoints via additionalSettings.supportsParallelToolCalls.
+        const parallelFlag = config?.additionalSettings?.['supportsParallelToolCalls'];
+        const supportsParallelToolCalls = typeof parallelFlag === 'boolean'
+            ? parallelFlag
+            : supportsNativeToolCalls;
         return {
             supportsContextCaching: false,
             supportsThinking: false,
             supportsStructuredOutput: true,
             isLocalProvider: false,
             supportsSpeedMetrics: false,
-            supportsNativeToolCalls
+            supportsNativeToolCalls,
+            supportsParallelToolCalls
         };
     }
 

@@ -74,7 +74,8 @@ export class GeminiProvider implements LLMProvider {
             isLocalProvider: false,
             supportsSpeedMetrics: false,
             cacheBakesContent: true,
-            supportsNativeToolCalls: true
+            supportsNativeToolCalls: true,
+            supportsParallelToolCalls: true
         };
     }
 

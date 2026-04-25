@@ -169,6 +169,11 @@ export class LlamaConfigComponent {
   async refreshModel() {
     this.isRefreshing.set(true);
     try {
+      // The user clicking refresh implies they want a fresh read — drop any
+      // cached /props entry for this baseUrl before asking for models.
+      const baseUrl = this.config.settings.baseUrl?.replace(/\/$/, '');
+      LlamaCppProvider.invalidatePropsCache(baseUrl);
+
       const models = await this.provider.getAvailableModels(this.config.settings);
       if (models && models.length > 0) {
         this.config.settings.modelId = models[0].id;

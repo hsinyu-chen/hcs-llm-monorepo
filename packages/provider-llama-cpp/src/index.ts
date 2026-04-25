@@ -16,9 +16,58 @@ interface LlamaCppToolCallAccumulator {
     argsBuffer: string;
 }
 
+interface PropsShape {
+    modelAlias: string | null;
+    contextSize: number | null;
+    chatTemplate: string | null;
+    chatTemplateCaps: {
+        supports_tools?: boolean;
+        supports_tool_calls?: boolean;
+        supports_parallel_tool_calls?: boolean;
+    } | null;
+}
+
+interface PropsCacheEntry {
+    /** Resolved value when the fetch completed; null while in-flight. */
+    value: PropsShape | null;
+    /** Pending promise when in-flight; absent once resolved (so further hits read `value`). */
+    pending?: Promise<PropsShape>;
+    /** Unix-ms timestamp after which the cached value is treated as stale. */
+    expiresAt: number;
+}
+
+/** Time-to-live for /props cache entries. Two competing concerns:
+ *    - Long enough to absorb the burst of callers (getAvailableModels,
+ *      probeNativeToolSupport, probeParallelToolSupport, fetchModelAlias,
+ *      agentContextInfo) at page-load and across rapid signal updates.
+ *    - Short enough that a server-side model swap surfaces quickly so we
+ *      don't keep showing stale chat_template_caps / contextSize / modelAlias
+ *      to the user.
+ *  10s is the chosen balance: page-load callers all fire within <500ms so
+ *  they fully share the cached entry, but the staleness window is short
+ *  enough that the user notices a swap within ~10s of next interaction.
+ *  The UI's "🔄 refresh" button bypasses this via invalidatePropsCache. */
+const PROPS_CACHE_TTL_MS = 10_000;
+
 export class LlamaCppProvider implements LLMProvider {
     readonly providerName = 'llama.cpp';
     settingsComponentId = 'llama-settings';
+
+    /** Per-baseUrl cache. Static so all instances share — page-load callers
+     *  may construct multiple LlamaCppProvider instances (registry +
+     *  settings-UI new-up) but they all hit the same server. */
+    private static propsCache = new Map<string, PropsCacheEntry>();
+
+    /** Force the next fetchProps for `baseUrl` (or all baseUrls if omitted) to
+     *  bypass the cache. Call this from UI affordances that imply the user
+     *  expects a fresh read — e.g. the "🔄 refresh from server" button. */
+    static invalidatePropsCache(baseUrl?: string): void {
+        if (baseUrl === undefined) {
+            LlamaCppProvider.propsCache.clear();
+        } else {
+            LlamaCppProvider.propsCache.delete(baseUrl.replace(/\/$/, ''));
+        }
+    }
 
     private extractConfig(config: LLMProviderConfig) {
         const cleanStr = (val: any) => (typeof val === 'string' && val.trim() === '') ? undefined : val;
@@ -54,6 +103,10 @@ export class LlamaCppProvider implements LLMProvider {
         // chat_template.
         const flag = config?.additionalSettings?.['supportsNativeToolCalls'];
         const supportsNativeToolCalls = typeof flag === 'boolean' ? flag : false;
+        const parallelFlag = config?.additionalSettings?.['supportsParallelToolCalls'];
+        const supportsParallelToolCalls = typeof parallelFlag === 'boolean'
+            ? parallelFlag
+            : false; // Conservative default; the async probe upgrades this when chat_template_caps says yes.
         return {
             supportsContextCaching: true,
             supportsThinking: true,
@@ -61,7 +114,8 @@ export class LlamaCppProvider implements LLMProvider {
             isLocalProvider: true,
             supportsSpeedMetrics: true,
             cacheBakesContent: false,
-            supportsNativeToolCalls
+            supportsNativeToolCalls,
+            supportsParallelToolCalls
         };
     }
 
@@ -87,6 +141,18 @@ export class LlamaCppProvider implements LLMProvider {
             return !!(props.chatTemplateCaps.supports_tools && props.chatTemplateCaps.supports_tool_calls);
         }
         return this.detectToolSupportFromTemplate(props.chatTemplate);
+    }
+
+    /**
+     * Reads `chat_template_caps.supports_parallel_tool_calls` when the live
+     * llama-server build exposes it. Older builds without `chat_template_caps`
+     * are conservatively reported as false (no regex fallback — the chat
+     * template wording for parallel calls is not stable enough to detect).
+     */
+    async probeParallelToolSupport(config: LLMProviderConfig): Promise<boolean> {
+        const { baseUrl } = this.extractConfig(config);
+        const props = await this.fetchProps(baseUrl);
+        return !!props.chatTemplateCaps?.supports_parallel_tool_calls;
     }
 
     private detectToolSupportFromTemplate(chatTemplate: string | null): boolean {
@@ -191,13 +257,42 @@ export class LlamaCppProvider implements LLMProvider {
         ];
     }
 
-    private async fetchProps(baseUrl: string): Promise<{
-        modelAlias: string | null;
-        contextSize: number | null;
-        chatTemplate: string | null;
-        chatTemplateCaps: { supports_tools?: boolean; supports_tool_calls?: boolean } | null;
-    }> {
-        const empty = { modelAlias: null, contextSize: null, chatTemplate: null, chatTemplateCaps: null };
+    private async fetchProps(baseUrl: string): Promise<PropsShape> {
+        // In-flight dedup + short TTL. The page-load burst (getAvailableModels +
+        // both probes + fetchModelAlias + agentContextInfo) all hits within
+        // milliseconds, so without dedup we'd issue ~5 identical /props
+        // requests per profile. With this cache, the first caller fetches and
+        // every other caller awaits the same promise.
+        const key = baseUrl.replace(/\/$/, '');
+        const now = Date.now();
+        const cached = LlamaCppProvider.propsCache.get(key);
+        if (cached && cached.expiresAt > now) {
+            if (cached.pending) return cached.pending;
+            if (cached.value) return cached.value;
+        }
+
+        const promise = this.doFetchProps(baseUrl);
+        LlamaCppProvider.propsCache.set(key, {
+            value: null,
+            pending: promise,
+            expiresAt: now + PROPS_CACHE_TTL_MS
+        });
+        const value = await promise;
+        // Replace the in-flight entry with the resolved value, keeping the
+        // same expiresAt so the TTL clock starts at request time (not resolve
+        // time) — page-load bursts get the longest possible benefit.
+        const existing = LlamaCppProvider.propsCache.get(key);
+        if (existing && existing.pending === promise) {
+            LlamaCppProvider.propsCache.set(key, {
+                value,
+                expiresAt: existing.expiresAt
+            });
+        }
+        return value;
+    }
+
+    private async doFetchProps(baseUrl: string): Promise<PropsShape> {
+        const empty: PropsShape = { modelAlias: null, contextSize: null, chatTemplate: null, chatTemplateCaps: null };
         try {
             const response = await fetch(`${baseUrl}/props`);
             if (!response.ok) return empty;
@@ -223,7 +318,11 @@ export class LlamaCppProvider implements LLMProvider {
             // Newer llama-server builds parse the chat template and expose
             // structured booleans here. Older builds omit it entirely.
             const chatTemplateCaps = data.chat_template_caps && typeof data.chat_template_caps === 'object'
-                ? data.chat_template_caps as { supports_tools?: boolean; supports_tool_calls?: boolean }
+                ? data.chat_template_caps as {
+                    supports_tools?: boolean;
+                    supports_tool_calls?: boolean;
+                    supports_parallel_tool_calls?: boolean;
+                }
                 : null;
 
             return { modelAlias, contextSize, chatTemplate, chatTemplateCaps };

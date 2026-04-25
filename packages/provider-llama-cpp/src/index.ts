@@ -486,7 +486,9 @@ export class LlamaCppProvider implements LLMProvider {
                                 const progress = data.prompt_progress;
                                 yield {
                                     usageMetadata: {
-                                        prompt: (timings?.prompt_n ?? usage?.prompt_tokens ?? progress?.total) || 0,
+                                        prompt: (timings?.prompt_n !== undefined
+                                            ? (timings.prompt_n + (timings.cache_n || 0))
+                                            : (usage?.prompt_tokens ?? progress?.total)) || 0,
                                         candidates: (timings?.predicted_n ?? usage?.completion_tokens) || 0,
                                         cached: (timings?.cache_n ?? usage?.prompt_tokens_details?.cached_tokens ?? progress?.cache) || 0,
                                         promptSpeed: timings?.prompt_per_second ?? (progress?.time_ms ? (progress.processed / (progress.time_ms / 1000)) : undefined),

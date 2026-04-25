@@ -46,7 +46,14 @@ export class LlamaCppProvider implements LLMProvider {
         return !!(config.baseUrl && config.baseUrl.trim());
     }
 
-    getCapabilities(): LLMProviderCapabilities {
+    getCapabilities(config?: LLMProviderConfig): LLMProviderCapabilities {
+        // llama.cpp tool support is per-GGUF (chat template). The static
+        // default is conservative (false); callers may override per profile
+        // via additionalSettings.supportsNativeToolCalls, and async callers
+        // can use probeNativeToolSupport() to auto-detect from the loaded
+        // chat_template.
+        const flag = config?.additionalSettings?.['supportsNativeToolCalls'];
+        const supportsNativeToolCalls = typeof flag === 'boolean' ? flag : false;
         return {
             supportsContextCaching: true,
             supportsThinking: true,
@@ -54,13 +61,42 @@ export class LlamaCppProvider implements LLMProvider {
             isLocalProvider: true,
             supportsSpeedMetrics: true,
             cacheBakesContent: false,
-            // True at the provider layer — actual support depends on whether the
-            // currently-loaded GGUF's chat template handles tool calling
-            // (Hermes-2-Pro / Llama-3.1+ / Qwen 2.5+ / Mistral, etc.).
-            // Models without tool-aware templates will silently emit plain
-            // text, in which case the caller should fall back to JSON-schema mode.
-            supportsNativeToolCalls: true
+            supportsNativeToolCalls
         };
+    }
+
+    /**
+     * Ask the live endpoint whether the loaded GGUF supports native tool
+     * calling. Two signals are checked in order:
+     *
+     *   1. `/props` -> `chat_template_caps`. Recent llama.cpp versions parse
+     *      the chat template themselves and surface explicit booleans
+     *      (`supports_tools`, `supports_tool_calls`). When present this is
+     *      authoritative — no regex guesswork needed.
+     *   2. `/props` -> `chat_template` (string). Fallback for older
+     *      llama-server builds that predate `chat_template_caps`. We scan
+     *      for tool-related tokens that appear in tool-aware templates
+     *      (Hermes-2-Pro, Llama-3.1+, Qwen 2.5+, Mistral).
+     *
+     * Errors return false so callers safely fall back to JSON-schema mode.
+     */
+    async probeNativeToolSupport(config: LLMProviderConfig): Promise<boolean> {
+        const { baseUrl } = this.extractConfig(config);
+        const props = await this.fetchProps(baseUrl);
+        if (props.chatTemplateCaps) {
+            return !!(props.chatTemplateCaps.supports_tools && props.chatTemplateCaps.supports_tool_calls);
+        }
+        return this.detectToolSupportFromTemplate(props.chatTemplate);
+    }
+
+    private detectToolSupportFromTemplate(chatTemplate: string | null): boolean {
+        if (!chatTemplate) return false;
+        // Tokens / keywords that appear in tool-aware chat templates:
+        //   <tool_call>          — Hermes-2-Pro, Qwen 2.5
+        //   <|python_tag|>       — Llama 3.1+
+        //   [TOOL_CALLS] / [AVAILABLE_TOOLS] — Mistral / Mixtral
+        //   tool_call_id         — generic OpenAI-shape templates
+        return /<tool_call>|<\|python_tag\|>|\[TOOL_CALLS\]|\[AVAILABLE_TOOLS\]|tool_call_id/i.test(chatTemplate);
     }
 
     /**
@@ -155,10 +191,16 @@ export class LlamaCppProvider implements LLMProvider {
         ];
     }
 
-    private async fetchProps(baseUrl: string): Promise<{ modelAlias: string | null; contextSize: number | null }> {
+    private async fetchProps(baseUrl: string): Promise<{
+        modelAlias: string | null;
+        contextSize: number | null;
+        chatTemplate: string | null;
+        chatTemplateCaps: { supports_tools?: boolean; supports_tool_calls?: boolean } | null;
+    }> {
+        const empty = { modelAlias: null, contextSize: null, chatTemplate: null, chatTemplateCaps: null };
         try {
             const response = await fetch(`${baseUrl}/props`);
-            if (!response.ok) return { modelAlias: null, contextSize: null };
+            if (!response.ok) return empty;
             const data = await response.json();
 
             let modelAlias: string | null = null;
@@ -177,9 +219,16 @@ export class LlamaCppProvider implements LLMProvider {
                 null;
             const contextSize = typeof rawCtx === 'number' && rawCtx > 0 ? rawCtx : null;
 
-            return { modelAlias, contextSize };
+            const chatTemplate = typeof data.chat_template === 'string' ? data.chat_template : null;
+            // Newer llama-server builds parse the chat template and expose
+            // structured booleans here. Older builds omit it entirely.
+            const chatTemplateCaps = data.chat_template_caps && typeof data.chat_template_caps === 'object'
+                ? data.chat_template_caps as { supports_tools?: boolean; supports_tool_calls?: boolean }
+                : null;
+
+            return { modelAlias, contextSize, chatTemplate, chatTemplateCaps };
         } catch {
-            return { modelAlias: null, contextSize: null };
+            return empty;
         }
     }
 

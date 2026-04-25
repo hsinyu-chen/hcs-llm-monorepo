@@ -78,6 +78,16 @@ import { OpenAIProvider } from '@hcs/llm-provider-openai';
           </div>
       </div>
 
+      <div class="advanced-divider">Tool Calling</div>
+      <div class="form-group">
+          <label title="Whether the configured endpoint+model supports native OpenAI tool calling. Default Auto = Yes; pin to No for endpoints/models that don't.">Native Tool Calls:</label>
+          <select [ngModel]="nativeToolCallsValue()" (ngModelChange)="setNativeToolCalls($event)">
+              <option value="auto">Auto (default: Yes)</option>
+              <option value="true">Yes — endpoint supports tools</option>
+              <option value="false">No — fall back to JSON</option>
+          </select>
+      </div>
+
       <div class="advanced-divider">Extended Config (OpenRouter/O1/O3)</div>
       
       <div class="form-group-toggle">
@@ -152,6 +162,20 @@ export class OpenAIConfigComponent {
     if (!this.config.settings.additionalSettings) {
       this.config.settings.additionalSettings = {};
     }
+  }
+
+  nativeToolCallsValue(): 'auto' | 'true' | 'false' {
+    const v = this.config.settings.additionalSettings?.['supportsNativeToolCalls'];
+    if (v === true) return 'true';
+    if (v === false) return 'false';
+    return 'auto';
+  }
+
+  setNativeToolCalls(value: 'auto' | 'true' | 'false'): void {
+    if (!this.config.settings.additionalSettings) this.config.settings.additionalSettings = {};
+    if (value === 'auto') delete this.config.settings.additionalSettings['supportsNativeToolCalls'];
+    else this.config.settings.additionalSettings['supportsNativeToolCalls'] = value === 'true';
+    this.configChanged.emit();
   }
 
   applyPreset(event: any) {

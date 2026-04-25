@@ -44,14 +44,20 @@ export class OpenAIProvider implements LLMProvider {
         return !!(config.apiKey && config.apiKey.trim()) && !!(config.baseUrl && config.baseUrl.trim());
     }
 
-    getCapabilities(): LLMProviderCapabilities {
+    getCapabilities(config?: LLMProviderConfig): LLMProviderCapabilities {
+        // OpenAI provider also fronts OpenRouter / Together / self-hosted
+        // proxies, where tool-call support varies. Read the per-profile
+        // override; default to true since the major modern endpoints
+        // (api.openai.com, OpenRouter, Together) all support tools.
+        const flag = config?.additionalSettings?.['supportsNativeToolCalls'];
+        const supportsNativeToolCalls = typeof flag === 'boolean' ? flag : true;
         return {
             supportsContextCaching: false,
             supportsThinking: false,
             supportsStructuredOutput: true,
             isLocalProvider: false,
             supportsSpeedMetrics: false,
-            supportsNativeToolCalls: true
+            supportsNativeToolCalls
         };
     }
 

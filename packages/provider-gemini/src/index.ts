@@ -65,7 +65,8 @@ export class GeminiProvider implements LLMProvider {
         return result;
     }
 
-    getCapabilities(): LLMProviderCapabilities {
+    getCapabilities(_config?: LLMProviderConfig): LLMProviderCapabilities {
+        // All Gemini models support native function calling — no per-config branch.
         return {
             supportsContextCaching: true,
             supportsThinking: true,

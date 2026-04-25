@@ -152,7 +152,25 @@ export interface LLMProvider {
 
     countTokens(config: LLMProviderConfig, modelId: string, contents: LLMContent[]): Promise<number>;
     isConfigured(config: LLMProviderConfig): boolean;
-    getCapabilities(): LLMProviderCapabilities;
+    /**
+     * Reports the provider's capabilities. Most flags are static per provider
+     * (e.g. supportsThinking, isLocalProvider) and ignore the config. Flags
+     * whose answer depends on the active endpoint or model — currently
+     * supportsNativeToolCalls — read from `config.additionalSettings` when a
+     * config is supplied. Callers that need a dynamic answer must pass the
+     * relevant profile's settings; callers that only need static flags may
+     * call without arguments.
+     */
+    getCapabilities(config?: LLMProviderConfig): LLMProviderCapabilities;
+    /**
+     * Optional async probe that asks the live endpoint whether it supports
+     * native tool calling. Implementations should be cheap (single HTTP
+     * round-trip; no inference) and tolerant of failure (return false on any
+     * error). Used by callers that want auto-detection on top of the static
+     * capability flag — e.g. llama.cpp inspecting `chat_template` from
+     * `/props` to detect tool-aware GGUFs.
+     */
+    probeNativeToolSupport?(config: LLMProviderConfig): Promise<boolean>;
     getAvailableModels(config: LLMProviderConfig): LLMModelDefinition[] | Promise<LLMModelDefinition[]>;
     getDefaultModelId(): string;
     getPreview?(contents: LLMContent[]): LLMContent[];

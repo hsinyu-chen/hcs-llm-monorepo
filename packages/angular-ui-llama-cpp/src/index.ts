@@ -117,6 +117,16 @@ import { LlamaCppProvider } from '@hcs/llm-provider-llama-cpp';
         </div>
       }
 
+      <div class="advanced-divider">TOOL CALLING</div>
+      <div class="form-group">
+          <label title="Whether the loaded GGUF's chat template supports native function calling (Hermes / Llama 3.1+ / Qwen 2.5+ / Mistral). Auto runs a /props chat_template probe at runtime; Yes/No pin the answer.">Native Tool Calls:</label>
+          <select [ngModel]="nativeToolCallsValue()" (ngModelChange)="setNativeToolCalls($event)">
+              <option value="auto">Auto (probe chat_template)</option>
+              <option value="true">Yes — model supports tools</option>
+              <option value="false">No — fall back to JSON</option>
+          </select>
+      </div>
+
       <div class="advanced-divider">PROMPT CACHE (SLOT SAVE)</div>
       <div class="form-group-toggle">
           <label title="Persist slot KV to .bin on disk via /slots/0?action=save so the next session can restore and skip prompt processing. Requires starting llama-server with --slot-save-path <dir>.">Persist Slot to Disk:</label>
@@ -132,7 +142,7 @@ export class LlamaConfigComponent {
   // I18n bridge
   private customTranslations = inject(LLM_TRANSLATIONS, { optional: true });
   public i18n = computed(() => this.customTranslations || DEFAULT_LLM_TRANSLATIONS);
-  
+
   private provider = new LlamaCppProvider();
   isRefreshing = signal(false);
 
@@ -140,6 +150,20 @@ export class LlamaConfigComponent {
     if (!this.config.settings.additionalSettings) {
       this.config.settings.additionalSettings = {};
     }
+  }
+
+  nativeToolCallsValue(): 'auto' | 'true' | 'false' {
+    const v = this.config.settings.additionalSettings?.['supportsNativeToolCalls'];
+    if (v === true) return 'true';
+    if (v === false) return 'false';
+    return 'auto';
+  }
+
+  setNativeToolCalls(value: 'auto' | 'true' | 'false'): void {
+    if (!this.config.settings.additionalSettings) this.config.settings.additionalSettings = {};
+    if (value === 'auto') delete this.config.settings.additionalSettings['supportsNativeToolCalls'];
+    else this.config.settings.additionalSettings['supportsNativeToolCalls'] = value === 'true';
+    this.configChanged.emit();
   }
 
   async refreshModel() {

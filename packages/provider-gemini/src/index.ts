@@ -48,8 +48,10 @@ export class GeminiProvider implements LLMProvider {
     }
 
     private toGeminiPart(part: LLMPart): Part {
-        const result: Part = {};
+        const result: Part & { thought?: boolean; thoughtSignature?: string } = {};
         if (part.text !== undefined) result.text = part.text;
+        if (part.thought) result.thought = part.thought;
+        if (part.thoughtSignature) result.thoughtSignature = part.thoughtSignature;
         if (part.functionCall) {
             result.functionCall = {
                 name: part.functionCall.name,
@@ -62,7 +64,7 @@ export class GeminiProvider implements LLMProvider {
                 response: part.functionResponse.response
             };
         }
-        return result;
+        return result as Part;
     }
 
     getCapabilities(_config?: LLMProviderConfig): LLMProviderCapabilities {

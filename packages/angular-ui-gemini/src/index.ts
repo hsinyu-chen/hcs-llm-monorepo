@@ -27,7 +27,7 @@ import { GeminiProvider } from '@hcs/llm-provider-gemini';
       @if (supportsThinking()) {
         <div class="form-group">
           <label for="thinkingLevel">Reasoning Depth:</label>
-          <select id="thinkingLevel" 
+          <select id="thinkingLevel"
                   [(ngModel)]="config.settings.additionalSettings!['thinkingLevel']"
                   (ngModelChange)="configChanged.emit()">
             @for (level of thinkingLevels(); track level) {
@@ -36,6 +36,13 @@ import { GeminiProvider } from '@hcs/llm-provider-gemini';
           </select>
         </div>
       }
+
+      <div class="form-group-toggle">
+          <label title="Use Gemini explicit context caching (createCachedContent). Cuts per-turn input cost by reusing the uploaded knowledge base, but Google bills for cache storage by the hour.">Enable Context Cache:</label>
+          <input type="checkbox"
+                 [(ngModel)]="config.settings.additionalSettings!['enableCache']"
+                 (ngModelChange)="configChanged.emit()">
+      </div>
 
       <div class="advanced-divider">{{ i18n().settings.modelPricingTitle }}</div>
       <div class="form-grid columns-3">

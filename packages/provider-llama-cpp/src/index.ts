@@ -380,7 +380,13 @@ export class LlamaCppProvider implements LLMProvider {
                 : null;
 
             return { modelAlias, contextSize, chatTemplate, chatTemplateCaps };
-        } catch {
+        } catch (e) {
+            // Silent swallow used to hide every failure mode (4xx, parse, net,
+            // and now timeout); log here matches countTokens's existing
+            // [LlamaCpp Tokenize Error] convention so a hung/dead server is
+            // visible in the console without changing the graceful-degrade
+            // contract (empty PropsShape on any failure).
+            console.warn(`[LlamaCpp] /props fetch failed for ${baseUrl}:`, e);
             return empty;
         } finally {
             clearTimeout(timer);

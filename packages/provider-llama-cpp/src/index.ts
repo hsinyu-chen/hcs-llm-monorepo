@@ -646,11 +646,14 @@ export class LlamaCppProvider implements LLMProvider {
         let lastError: any;
         for (let attempt = 1; attempt <= 2; attempt++) {
             // Fail-fast: if a peer earlier in the burst already aborted (e.g.
-            // hit the 10s timeout against a hung server), skip the fetch and
-            // re-throw the same reason. The whole burst collapses in ~10s
-            // total instead of N × 10s.
+            // hit the 10s timeout against a hung server), skip the fetch.
+            // Record the abort reason as lastError and `break` so the loop
+            // exits naturally — that routes us through the bottom
+            // console.error + throw path, keeping all tokenize failures
+            // (timeout, 4xx, peer-aborted) visible in the console.
             if (ac.signal.aborted) {
-                throw ac.signal.reason ?? lastError ?? new Error('Tokenize aborted');
+                lastError = ac.signal.reason ?? lastError ?? new Error('Tokenize aborted');
+                break;
             }
             try {
                 // Pass the burst-shared `ac` so the helper's timeout abort

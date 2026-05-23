@@ -49,6 +49,15 @@ interface PropsCacheEntry {
  *  The UI's "🔄 refresh" button bypasses this via invalidatePropsCache. */
 const PROPS_CACHE_TTL_MS = 10_000;
 
+/** Minimum cache lifetime after a fetchProps resolves. The TTL clock starts
+ *  at request time (so page-load bursts get the maximum shared window), but
+ *  a worst-case slow response — notably a /props timeout that runs the full
+ *  PROPS_TIMEOUT_MS — would otherwise resolve at the exact expiry moment,
+ *  giving zero post-resolve cache lifetime. The next caller would bypass
+ *  cache and trigger another full-timeout hang. This floor guarantees that
+ *  every resolved value (success or empty) survives at least this long. */
+const PROPS_CACHE_POST_RESOLVE_FLOOR_MS = 2_000;
+
 export class LlamaCppProvider implements LLMProvider {
     readonly providerName = 'llama.cpp';
     settingsComponentId = 'llama-settings';
@@ -313,14 +322,19 @@ export class LlamaCppProvider implements LLMProvider {
             expiresAt: now + PROPS_CACHE_TTL_MS
         });
         const value = await promise;
-        // Replace the in-flight entry with the resolved value, keeping the
-        // same expiresAt so the TTL clock starts at request time (not resolve
-        // time) — page-load bursts get the longest possible benefit.
+        // Replace the in-flight entry with the resolved value. The TTL clock
+        // started at request time so page-load bursts get the longest shared
+        // window, BUT a worst-case slow resolution (notably a full-timeout
+        // /props that takes PROPS_TIMEOUT_MS) would land at or past the
+        // original expiresAt, leaving zero post-resolve cache lifetime. Floor
+        // it so every resolved value survives at least the floor window —
+        // otherwise the next caller arriving 1ms later bypasses cache and
+        // triggers another full-timeout hang.
         const existing = LlamaCppProvider.propsCache.get(key);
         if (existing && existing.pending === promise) {
             LlamaCppProvider.propsCache.set(key, {
                 value,
-                expiresAt: existing.expiresAt
+                expiresAt: Math.max(existing.expiresAt, Date.now() + PROPS_CACHE_POST_RESOLVE_FLOOR_MS)
             });
         }
         return value;
@@ -612,16 +626,12 @@ export class LlamaCppProvider implements LLMProvider {
     }
 
     private async tokenizeOnce(baseUrl: string, text: string, ac: AbortController): Promise<number> {
-        // Fail-fast: if a peer earlier in the burst already aborted (e.g.
-        // hit the 10s timeout against a hung server), skip the fetch and
-        // re-throw the same reason. The whole burst collapses in ~10s
-        // total instead of N × 10s.
-        if (ac.signal.aborted) {
-            throw ac.signal.reason ?? new Error('Tokenize aborted by burst peer');
-        }
-
         let lastError: any;
         for (let attempt = 1; attempt <= 2; attempt++) {
+            // Fail-fast: if a peer earlier in the burst already aborted (e.g.
+            // hit the 10s timeout against a hung server), skip the fetch and
+            // re-throw the same reason. The whole burst collapses in ~10s
+            // total instead of N × 10s.
             if (ac.signal.aborted) {
                 throw ac.signal.reason ?? lastError ?? new Error('Tokenize aborted');
             }

@@ -58,21 +58,40 @@ export class LlamaCppProvider implements LLMProvider {
      *  settings-UI new-up) but they all hit the same server. */
     private static propsCache = new Map<string, PropsCacheEntry>();
 
-    /** Per-baseUrl serialization tail for countTokens. llama.cpp tokenizes on
-     *  the main slot synchronously with generation; firing N parallel
-     *  /tokenize while a turn is generating stalls them all (each one then
-     *  hits the per-request timeout, multiplying user-visible latency by N).
-     *  Chaining requests onto the previous tail keeps the server at most one
-     *  /tokenize deep and avoids DoSing the slot. Keyed by baseUrl because
-     *  that's what identifies a server instance; two profiles pointing at
-     *  the same server still share one queue. */
-    private static countTokenQueue = new Map<string, Promise<unknown>>();
+    /** Per-baseUrl serialization for countTokens — a "burst" is the run of
+     *  chained calls sharing one queue tail AND one AbortController.
+     *
+     *  Why serialize: llama.cpp tokenizes on the main slot synchronously
+     *  with generation; firing N parallel /tokenize while a turn is
+     *  generating stalls them all. Chaining requests onto the previous tail
+     *  keeps the server at most one /tokenize deep and avoids DoSing the
+     *  slot.
+     *
+     *  Why share the AC: the failure mode that triggered this is "server is
+     *  dead". With a per-task AC, peer 1 hits its 10s timeout, peer 2 then
+     *  burns its own 10s, peer 3 the same — N files behind a hung server =
+     *  N × 10s of `status=loading` UI lockout. Sharing one AC means the
+     *  first peer's timeout aborts every chained peer at once: the whole
+     *  burst fails in ~10s regardless of queue depth.
+     *
+     *  Lifecycle: entry stays in the map until the last task in the chain
+     *  settles (queue empty). At that point the entry is removed, so the
+     *  next caller gets a fresh AC — recoverable if the server comes back.
+     *  Keyed by baseUrl: two profiles pointing at the same server share. */
+    private static countTokenBursts = new Map<string, { ac: AbortController; tail: Promise<unknown> }>();
 
     /** Per-attempt /tokenize timeout. Below this, a hung server (e.g. queued
      *  behind a long generation) freezes any caller that puts the app's
      *  `status` into `'loading'` — which then disables the profile picker
      *  and locks the user out of switching to a working profile. */
     private static readonly TOKENIZE_TIMEOUT_MS = 10_000;
+
+    /** /props timeout. No queue needed here — `propsCache` already dedups
+     *  in-flight callers, so a single fetch covers the page-load burst.
+     *  But without a timeout, a hung /props leaves the cache entry pending
+     *  forever and every joined caller hangs with it. With the timeout,
+     *  doFetchProps's catch returns empty and the cache resolves cleanly. */
+    private static readonly PROPS_TIMEOUT_MS = 10_000;
 
     /** Force the next fetchProps for `baseUrl` (or all baseUrls if omitted) to
      *  bypass the cache. Call this from UI affordances that imply the user
@@ -309,8 +328,13 @@ export class LlamaCppProvider implements LLMProvider {
 
     private async doFetchProps(baseUrl: string): Promise<PropsShape> {
         const empty: PropsShape = { modelAlias: null, contextSize: null, chatTemplate: null, chatTemplateCaps: null };
+        const ac = new AbortController();
+        const timer = setTimeout(
+            () => ac.abort(new Error(`Props fetch timed out after ${LlamaCppProvider.PROPS_TIMEOUT_MS}ms`)),
+            LlamaCppProvider.PROPS_TIMEOUT_MS
+        );
         try {
-            const response = await fetch(`${baseUrl}/props`);
+            const response = await fetch(`${baseUrl}/props`, { signal: ac.signal });
             if (!response.ok) return empty;
             const data = await response.json();
 
@@ -344,6 +368,8 @@ export class LlamaCppProvider implements LLMProvider {
             return { modelAlias, contextSize, chatTemplate, chatTemplateCaps };
         } catch {
             return empty;
+        } finally {
+            clearTimeout(timer);
         }
     }
 
@@ -555,30 +581,52 @@ export class LlamaCppProvider implements LLMProvider {
         const text = contents.flatMap(c => c.parts).map(p => p.text || '').join('\n');
         if (!text) return 0;
 
-        const prior = LlamaCppProvider.countTokenQueue.get(baseUrl);
+        let burst = LlamaCppProvider.countTokenBursts.get(baseUrl);
+        if (!burst) {
+            burst = { ac: new AbortController(), tail: Promise.resolve() };
+            LlamaCppProvider.countTokenBursts.set(baseUrl, burst);
+        }
+        const ac = burst.ac;
+        const prior = burst.tail;
+
         const task = (async () => {
-            // A prior failure (timeout, network) on the same server must not
-            // poison this call — swallow rejection but still wait so the
-            // serialization invariant holds.
-            if (prior) { try { await prior; } catch { /* swallow */ } }
-            return this.tokenizeOnce(baseUrl, text);
+            // A prior failure on the same server must not poison this call's
+            // chain order — swallow but still await so we run sequentially.
+            // (The aborted-signal check below is the actual fail-fast path.)
+            try { await prior; } catch { /* swallow */ }
+            return this.tokenizeOnce(baseUrl, text, ac);
         })();
-        LlamaCppProvider.countTokenQueue.set(baseUrl, task);
-        // Drop the entry when this task is the tail — otherwise the map
-        // grows unbounded on long sessions. If another caller already chained
-        // after us, leave the map pointing at them.
+        burst.tail = task;
+
+        // Drop the burst when the chain naturally drains. Only the actual
+        // last task settling (no peer chained after us) clears the map, so
+        // the next caller gets a fresh AC and can recover if the server is
+        // back. If a peer is already chained, leave the entry alone.
         task.finally(() => {
-            if (LlamaCppProvider.countTokenQueue.get(baseUrl) === task) {
-                LlamaCppProvider.countTokenQueue.delete(baseUrl);
+            const current = LlamaCppProvider.countTokenBursts.get(baseUrl);
+            if (current && current.tail === task) {
+                LlamaCppProvider.countTokenBursts.delete(baseUrl);
             }
         });
         return task;
     }
 
-    private async tokenizeOnce(baseUrl: string, text: string): Promise<number> {
+    private async tokenizeOnce(baseUrl: string, text: string, ac: AbortController): Promise<number> {
+        // Fail-fast: if a peer earlier in the burst already aborted (e.g.
+        // hit the 10s timeout against a hung server), skip the fetch and
+        // re-throw the same reason. The whole burst collapses in ~10s
+        // total instead of N × 10s.
+        if (ac.signal.aborted) {
+            throw ac.signal.reason ?? new Error('Tokenize aborted by burst peer');
+        }
+
         let lastError: any;
         for (let attempt = 1; attempt <= 2; attempt++) {
-            const ac = new AbortController();
+            if (ac.signal.aborted) {
+                throw ac.signal.reason ?? lastError ?? new Error('Tokenize aborted');
+            }
+            // Per-attempt timer drives the SHARED ac.abort — so timing out
+            // here also cancels every peer queued behind us in this burst.
             const timer = setTimeout(
                 () => ac.abort(new Error(`Tokenize timed out after ${LlamaCppProvider.TOKENIZE_TIMEOUT_MS}ms`)),
                 LlamaCppProvider.TOKENIZE_TIMEOUT_MS
@@ -602,7 +650,10 @@ export class LlamaCppProvider implements LLMProvider {
                 clearTimeout(timer);
             }
 
-            if (attempt < 2) {
+            // Skip the backoff sleep when the burst was aborted — no point
+            // waiting 500ms only to immediately throw at the top of the next
+            // iteration's aborted check.
+            if (attempt < 2 && !ac.signal.aborted) {
                 await new Promise(resolve => setTimeout(resolve, 500));
             }
         }

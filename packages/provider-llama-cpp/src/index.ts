@@ -102,6 +102,15 @@ export class LlamaCppProvider implements LLMProvider {
      *  doFetchProps's catch returns empty and the cache resolves cleanly. */
     private static readonly PROPS_TIMEOUT_MS = 10_000;
 
+    /** /slots/0?action={save,restore,erase} timeout. Same hung-server
+     *  concern as /tokenize and /props — without this, post-gen slot save
+     *  in generateContentStream's finally never completes (async generator
+     *  hangs), getCache's restore probe hangs (caller can't decide miss),
+     *  eraseSlot's swallow blocks createCache / deleteCache. All three are
+     *  best-effort: timeout maps cleanly to the existing failure path
+     *  (console.warn + degrade). */
+    private static readonly SLOT_OP_TIMEOUT_MS = 10_000;
+
     /** Force the next fetchProps for `baseUrl` (or all baseUrls if omitted) to
      *  bypass the cache. Call this from UI affordances that imply the user
      *  expects a fresh read — e.g. the "🔄 refresh from server" button. */
@@ -342,13 +351,11 @@ export class LlamaCppProvider implements LLMProvider {
 
     private async doFetchProps(baseUrl: string): Promise<PropsShape> {
         const empty: PropsShape = { modelAlias: null, contextSize: null, chatTemplate: null, chatTemplateCaps: null };
-        const ac = new AbortController();
-        const timer = setTimeout(
-            () => ac.abort(new Error(`Props fetch timed out after ${LlamaCppProvider.PROPS_TIMEOUT_MS}ms`)),
-            LlamaCppProvider.PROPS_TIMEOUT_MS
-        );
         try {
-            const response = await fetch(`${baseUrl}/props`, { signal: ac.signal });
+            const response = await this.fetchWithTimeout(`${baseUrl}/props`, {}, {
+                timeoutMs: LlamaCppProvider.PROPS_TIMEOUT_MS,
+                onTimeoutError: () => new Error(`Props fetch timed out after ${LlamaCppProvider.PROPS_TIMEOUT_MS}ms`)
+            });
             if (!response.ok) return empty;
             const data = await response.json();
 
@@ -381,15 +388,12 @@ export class LlamaCppProvider implements LLMProvider {
 
             return { modelAlias, contextSize, chatTemplate, chatTemplateCaps };
         } catch (e) {
-            // Silent swallow used to hide every failure mode (4xx, parse, net,
-            // and now timeout); log here matches countTokens's existing
-            // [LlamaCpp Tokenize Error] convention so a hung/dead server is
-            // visible in the console without changing the graceful-degrade
+            // Used to be a silent swallow that covered every failure mode
+            // (4xx, parse, net, and now timeout). Warn here so a hung/dead
+            // server is visible without changing the graceful-degrade
             // contract (empty PropsShape on any failure).
             console.warn(`[LlamaCpp] /props fetch failed for ${baseUrl}:`, e);
             return empty;
-        } finally {
-            clearTimeout(timer);
         }
     }
 
@@ -581,10 +585,17 @@ export class LlamaCppProvider implements LLMProvider {
             // latest accumulated KV, so restores always resume at the newest state.
             if (saveAfterGen && !config.signal?.aborted) {
                 try {
-                    const saveRes = await fetch(`${baseUrl}/slots/0?action=save`, {
+                    // Timeout so a hung llama-server doesn't trap this
+                    // generator's finally block forever — the stream needs to
+                    // close even if the post-gen slot save can't reach the
+                    // server.
+                    const saveRes = await this.fetchWithTimeout(`${baseUrl}/slots/0?action=save`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ filename: config.cachedContentName })
+                    }, {
+                        timeoutMs: LlamaCppProvider.SLOT_OP_TIMEOUT_MS,
+                        onTimeoutError: () => new Error(`Slot save timed out after ${LlamaCppProvider.SLOT_OP_TIMEOUT_MS}ms`)
                     });
                     if (!saveRes.ok) {
                         console.warn(`[LlamaCpp] Slot save failed (${saveRes.status}): ${await saveRes.text()}`);
@@ -641,18 +652,17 @@ export class LlamaCppProvider implements LLMProvider {
             if (ac.signal.aborted) {
                 throw ac.signal.reason ?? lastError ?? new Error('Tokenize aborted');
             }
-            // Per-attempt timer drives the SHARED ac.abort — so timing out
-            // here also cancels every peer queued behind us in this burst.
-            const timer = setTimeout(
-                () => ac.abort(new Error(`Tokenize timed out after ${LlamaCppProvider.TOKENIZE_TIMEOUT_MS}ms`)),
-                LlamaCppProvider.TOKENIZE_TIMEOUT_MS
-            );
             try {
-                const response = await fetch(`${baseUrl}/tokenize`, {
+                // Pass the burst-shared `ac` so the helper's timeout abort
+                // cascades to every peer chained behind us.
+                const response = await this.fetchWithTimeout(`${baseUrl}/tokenize`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ content: text }),
-                    signal: ac.signal
+                    body: JSON.stringify({ content: text })
+                }, {
+                    timeoutMs: LlamaCppProvider.TOKENIZE_TIMEOUT_MS,
+                    ac,
+                    onTimeoutError: () => new Error(`Tokenize timed out after ${LlamaCppProvider.TOKENIZE_TIMEOUT_MS}ms`)
                 });
                 if (response.ok) {
                     const data = await response.json();
@@ -662,8 +672,6 @@ export class LlamaCppProvider implements LLMProvider {
                 lastError = new Error(`Tokenize failed (${response.status}): ${errorBody}`);
             } catch (e) {
                 lastError = e;
-            } finally {
-                clearTimeout(timer);
             }
 
             // Skip the backoff sleep when the burst was aborted — no point
@@ -722,7 +730,10 @@ export class LlamaCppProvider implements LLMProvider {
 
     private async eraseSlot(baseUrl: string): Promise<void> {
         try {
-            await fetch(`${baseUrl}/slots/0?action=erase`, { method: 'POST' });
+            await this.fetchWithTimeout(`${baseUrl}/slots/0?action=erase`, { method: 'POST' }, {
+                timeoutMs: LlamaCppProvider.SLOT_OP_TIMEOUT_MS,
+                onTimeoutError: () => new Error(`Slot erase timed out after ${LlamaCppProvider.SLOT_OP_TIMEOUT_MS}ms`)
+            });
         } catch (e) {
             console.warn('[LlamaCpp] Slot erase failed:', e);
         }
@@ -751,10 +762,13 @@ export class LlamaCppProvider implements LLMProvider {
     async getCache(config: LLMProviderConfig, name: string): Promise<LLMCacheInfo | null> {
         const { baseUrl, modelId } = this.extractConfig(config);
         try {
-            const res = await fetch(`${baseUrl}/slots/0?action=restore`, {
+            const res = await this.fetchWithTimeout(`${baseUrl}/slots/0?action=restore`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ filename: name })
+            }, {
+                timeoutMs: LlamaCppProvider.SLOT_OP_TIMEOUT_MS,
+                onTimeoutError: () => new Error(`Slot restore timed out after ${LlamaCppProvider.SLOT_OP_TIMEOUT_MS}ms`)
             });
             if (!res.ok) return null;
             const data = await res.json().catch(() => ({}));
@@ -797,6 +811,44 @@ export class LlamaCppProvider implements LLMProvider {
         const { baseUrl } = this.extractConfig(config);
         await this.eraseSlot(baseUrl);
         return 1;
+    }
+
+    /**
+     * Wraps `fetch` with an abort-on-timeout timer. Five sites in this file
+     * share the same hung-llama-server failure mode and need the same
+     * AbortController + setTimeout + clearTimeout boilerplate; centralizing
+     * it here keeps the timeout discipline consistent.
+     *
+     * Two abort modes:
+     *   - When `ac` is omitted, the helper owns a fresh AbortController.
+     *     Timeout aborts only this fetch.
+     *   - When `ac` is provided (tokenizeOnce's burst-shared controller),
+     *     the helper uses it directly. Timeout aborts the shared AC, which
+     *     cascades to every chained peer via their `signal.aborted` checks.
+     *
+     * `onTimeoutError` lets callers pick the abort reason so log lines /
+     * thrown errors stay endpoint-specific.
+     *
+     * The timer is cleared as soon as `fetch` resolves (or rejects),
+     * meaning the timeout covers the connection + headers but not the
+     * subsequent body read. Body reads here are small JSON / empty so
+     * extending the timer over them isn't worth the complexity.
+     */
+    private async fetchWithTimeout(
+        url: string,
+        init: RequestInit,
+        opts: { timeoutMs: number; ac?: AbortController; onTimeoutError?: () => Error }
+    ): Promise<Response> {
+        const ac = opts.ac ?? new AbortController();
+        const timer = setTimeout(
+            () => ac.abort(opts.onTimeoutError?.() ?? new Error(`Fetch timed out after ${opts.timeoutMs}ms`)),
+            opts.timeoutMs
+        );
+        try {
+            return await fetch(url, { ...init, signal: ac.signal });
+        } finally {
+            clearTimeout(timer);
+        }
     }
 
     private prepareSchema(schema: any): any {

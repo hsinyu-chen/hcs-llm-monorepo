@@ -58,6 +58,22 @@ export class LlamaCppProvider implements LLMProvider {
      *  settings-UI new-up) but they all hit the same server. */
     private static propsCache = new Map<string, PropsCacheEntry>();
 
+    /** Per-baseUrl serialization tail for countTokens. llama.cpp tokenizes on
+     *  the main slot synchronously with generation; firing N parallel
+     *  /tokenize while a turn is generating stalls them all (each one then
+     *  hits the per-request timeout, multiplying user-visible latency by N).
+     *  Chaining requests onto the previous tail keeps the server at most one
+     *  /tokenize deep and avoids DoSing the slot. Keyed by baseUrl because
+     *  that's what identifies a server instance; two profiles pointing at
+     *  the same server still share one queue. */
+    private static countTokenQueue = new Map<string, Promise<unknown>>();
+
+    /** Per-attempt /tokenize timeout. Below this, a hung server (e.g. queued
+     *  behind a long generation) freezes any caller that puts the app's
+     *  `status` into `'loading'` — which then disables the profile picker
+     *  and locks the user out of switching to a working profile. */
+    private static readonly TOKENIZE_TIMEOUT_MS = 10_000;
+
     /** Force the next fetchProps for `baseUrl` (or all baseUrls if omitted) to
      *  bypass the cache. Call this from UI affordances that imply the user
      *  expects a fresh read — e.g. the "🔄 refresh from server" button. */
@@ -539,13 +555,40 @@ export class LlamaCppProvider implements LLMProvider {
         const text = contents.flatMap(c => c.parts).map(p => p.text || '').join('\n');
         if (!text) return 0;
 
+        const prior = LlamaCppProvider.countTokenQueue.get(baseUrl);
+        const task = (async () => {
+            // A prior failure (timeout, network) on the same server must not
+            // poison this call — swallow rejection but still wait so the
+            // serialization invariant holds.
+            if (prior) { try { await prior; } catch { /* swallow */ } }
+            return this.tokenizeOnce(baseUrl, text);
+        })();
+        LlamaCppProvider.countTokenQueue.set(baseUrl, task);
+        // Drop the entry when this task is the tail — otherwise the map
+        // grows unbounded on long sessions. If another caller already chained
+        // after us, leave the map pointing at them.
+        task.finally(() => {
+            if (LlamaCppProvider.countTokenQueue.get(baseUrl) === task) {
+                LlamaCppProvider.countTokenQueue.delete(baseUrl);
+            }
+        });
+        return task;
+    }
+
+    private async tokenizeOnce(baseUrl: string, text: string): Promise<number> {
         let lastError: any;
         for (let attempt = 1; attempt <= 2; attempt++) {
+            const ac = new AbortController();
+            const timer = setTimeout(
+                () => ac.abort(new Error(`Tokenize timed out after ${LlamaCppProvider.TOKENIZE_TIMEOUT_MS}ms`)),
+                LlamaCppProvider.TOKENIZE_TIMEOUT_MS
+            );
             try {
                 const response = await fetch(`${baseUrl}/tokenize`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ content: text })
+                    body: JSON.stringify({ content: text }),
+                    signal: ac.signal
                 });
                 if (response.ok) {
                     const data = await response.json();
@@ -555,8 +598,10 @@ export class LlamaCppProvider implements LLMProvider {
                 lastError = new Error(`Tokenize failed (${response.status}): ${errorBody}`);
             } catch (e) {
                 lastError = e;
+            } finally {
+                clearTimeout(timer);
             }
-            
+
             if (attempt < 2) {
                 await new Promise(resolve => setTimeout(resolve, 500));
             }

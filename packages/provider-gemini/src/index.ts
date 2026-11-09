@@ -214,27 +214,41 @@ export class GeminiProvider implements LLMProvider {
         systemInstruction: string,
         genConfig: LLMGenerateConfig
     ): AsyncGenerator<LLMStreamChunk> {
+        // The SDK only listens for a later 'abort' event, so a signal that is already aborted would never cancel the request.
+        if (genConfig.signal?.aborted) return;
+
         const geminiContents = contents.map(c => this.toGeminiContent(c));
-        const stream = await this.sendMessageStream(config, geminiContents, systemInstruction, genConfig);
+        try {
+            const stream = await this.sendMessageStream(config, geminiContents, systemInstruction, genConfig);
 
-        for await (const chunk of stream) {
-            if (genConfig.signal?.aborted) return;
+            for await (const chunk of stream) {
+                if (genConfig.signal?.aborted) return;
 
-            const candidate = chunk.candidates?.[0];
-            const finishReason = candidate?.finishReason;
+                const candidate = chunk.candidates?.[0];
+                const finishReason = candidate?.finishReason;
 
-            if (candidate?.content?.parts) {
-                for (const part of candidate.content.parts) {
-                    const extPart = part as Part & { thought?: boolean; thoughtSignature?: string };
-                    const fc = extPart.functionCall;
+                if (candidate?.content?.parts) {
+                    for (const part of candidate.content.parts) {
+                        const extPart = part as Part & { thought?: boolean; thoughtSignature?: string };
+                        const fc = extPart.functionCall;
+                        yield {
+                            text: extPart.text,
+                            thought: extPart.thought,
+                            thoughtSignature: extPart.thoughtSignature,
+                            functionCall: fc ? {
+                                name: fc.name ?? '',
+                                args: (fc.args ?? {}) as Record<string, unknown>
+                            } : undefined,
+                            finishReason,
+                            usageMetadata: chunk.usageMetadata ? {
+                                prompt: chunk.usageMetadata.promptTokenCount || 0,
+                                candidates: chunk.usageMetadata.candidatesTokenCount || 0,
+                                cached: chunk.usageMetadata.cachedContentTokenCount || 0
+                            } : undefined
+                        };
+                    }
+                } else if (finishReason) {
                     yield {
-                        text: extPart.text,
-                        thought: extPart.thought,
-                        thoughtSignature: extPart.thoughtSignature,
-                        functionCall: fc ? {
-                            name: fc.name ?? '',
-                            args: (fc.args ?? {}) as Record<string, unknown>
-                        } : undefined,
                         finishReason,
                         usageMetadata: chunk.usageMetadata ? {
                             prompt: chunk.usageMetadata.promptTokenCount || 0,
@@ -243,16 +257,11 @@ export class GeminiProvider implements LLMProvider {
                         } : undefined
                     };
                 }
-            } else if (finishReason) {
-                yield {
-                    finishReason,
-                    usageMetadata: chunk.usageMetadata ? {
-                        prompt: chunk.usageMetadata.promptTokenCount || 0,
-                        candidates: chunk.usageMetadata.candidatesTokenCount || 0,
-                        cached: chunk.usageMetadata.cachedContentTokenCount || 0
-                    } : undefined
-                };
             }
+        } catch (e) {
+            // Before the response headers the SDK rethrows an abort as a plain Error ("exception ... sending request"), so the signal, not the error, identifies a cancellation.
+            if (genConfig.signal?.aborted) return;
+            throw e;
         }
     }
 
@@ -344,6 +353,7 @@ export class GeminiProvider implements LLMProvider {
         if (config.responseMimeType && !responseSchema) generationConfig.responseMimeType = config.responseMimeType;
         if (responseSchema) generationConfig.responseSchema = responseSchema;
         if (config.toolConfig && !cachedContentName) generationConfig.toolConfig = config.toolConfig;
+        if (config.signal) generationConfig.abortSignal = config.signal;
 
         const request: GenerateContentParameters = {
             model: lastModelId,

@@ -214,15 +214,15 @@ export class GeminiProvider implements LLMProvider {
         systemInstruction: string,
         genConfig: LLMGenerateConfig
     ): AsyncGenerator<LLMStreamChunk> {
-        // The SDK only listens for a later 'abort' event, so a signal that is already aborted would never cancel the request.
-        if (genConfig.signal?.aborted) return;
+        // The SDK only listens for a later 'abort' event and would send the request anyway, so an already-aborted signal throws its reason here.
+        genConfig.signal?.throwIfAborted();
 
         const geminiContents = contents.map(c => this.toGeminiContent(c));
         try {
             const stream = await this.sendMessageStream(config, geminiContents, systemInstruction, genConfig);
 
             for await (const chunk of stream) {
-                if (genConfig.signal?.aborted) return;
+                genConfig.signal?.throwIfAborted();
 
                 const candidate = chunk.candidates?.[0];
                 const finishReason = candidate?.finishReason;
@@ -259,8 +259,8 @@ export class GeminiProvider implements LLMProvider {
                 }
             }
         } catch (e) {
-            // Before the response headers the SDK rethrows an abort as a plain Error ("exception ... sending request"), so the signal, not the error, identifies a cancellation.
-            if (genConfig.signal?.aborted) return;
+            // The SDK wraps an abort before the response headers into a plain Error ("exception ... sending request"), so the signal, not the caught error, identifies a cancellation; the caller gets the signal's reason either way.
+            genConfig.signal?.throwIfAborted();
             throw e;
         }
     }

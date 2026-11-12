@@ -19,13 +19,13 @@
                         <span class="provider-tag">{{ config.provider }}</span>
                     </div>
                     <div class="card-actions">
-                        <button class="secondary-btn" (click)="editConfig(config)">Edit</button>
+                        <button class="secondary-btn" (click)="editConfig(config)">{{ i18n().settings.edit }}</button>
                         <button class="secondary-btn" (click)="copyConfig(config)">{{ i18n().settings.copy }}</button>
                         <button class="danger-btn" (click)="deleteConfig(config.id)">{{ i18n().settings.delete }}</button>
                     </div>
                 </div>
                 } @empty {
-                <p class="empty-msg">No profiles found.</p>
+                <p class="empty-msg">{{ i18n().settings.noProfiles }}</p>
                 }
             </div>
         </div>
@@ -34,7 +34,7 @@
             <div class="form-group">
                 <label for="configNameInput">{{ i18n().settings.configName }}</label>
                 <input id="configNameInput" type="text" [(ngModel)]="editingConfig()!.name"
-                    placeholder="Enter name...">
+                    [placeholder]="i18n().settings.namePlaceholder">
             </div>
 
             <div class="form-group">
@@ -52,7 +52,8 @@
                 <ng-template [cdkPortalOutlet]="configPortal()" (attached)="onPortalAttached($event)"></ng-template>
                 }
             </div>
-            
+
+            @if (showRateLimits()) {
             <div class="rate-limit-settings">
                 <h4>{{ i18n().settings.rateLimitTitle }}</h4>
                 <div class="form-grid columns-2">
@@ -70,6 +71,7 @@
                     </div>
                 </div>
             </div>
+            }
 
             @if (modelPricing()) {
             <div class="pricing-estimation">
@@ -88,7 +90,7 @@
                         <span class="est-value">${{ modelPricing()!.outputCost.toFixed(4) }}</span>
                     </div>
                     <div class="est-total">
-                        <span class="est-label">Total Projection:</span>
+                        <span class="est-label">{{ i18n().settings.totalProjection }}</span>
                         <span class="est-value">${{ modelPricing()!.total.toFixed(4) }}</span>
                     </div>
                 </div>
@@ -101,10 +103,12 @@
                     <button class="secondary-btn" (click)="testConnection()" [disabled]="isTesting()">
                         {{ isTesting() ? i18n().settings.testing : i18n().settings.test }}
                     </button>
-                    <span class="status-text" [class.success]="testStatus().includes('✅')"
-                        [class.error]="testStatus().includes('❌')">
-                        {{ testStatus() }}
+                    @if (testStatus(); as status) {
+                    <span class="status-text" [class.success]="status.kind === 'success'"
+                        [class.error]="status.kind === 'error'">
+                        {{ testStatusIcons[status.kind] }} {{ status.text }}
                     </span>
+                    }
                 </div>
 
                 @if (testResponse()) {

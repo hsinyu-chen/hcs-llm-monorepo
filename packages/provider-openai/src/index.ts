@@ -6,7 +6,9 @@ import {
     LLMFunctionCall,
     LLMGenerateConfig,
     LLMStreamChunk,
-    LLMModelDefinition
+    LLMModelDefinition,
+    LLMProbeResult,
+    probeJson
 } from '@hcs/llm-core';
 
 interface OpenAIToolCallAccumulator {
@@ -14,6 +16,9 @@ interface OpenAIToolCallAccumulator {
     name: string;
     argsBuffer: string;
 }
+
+/** Reasoning effort sent in chat_template_kwargs when the profile sets none. */
+export const OPENAI_DEFAULT_REASONING_EFFORT = 'low';
 
 export class OpenAIProvider implements LLMProvider {
     readonly providerName = 'openai';
@@ -24,8 +29,8 @@ export class OpenAIProvider implements LLMProvider {
         const settings = config.additionalSettings || {};
 
         return {
-            baseUrl: config.baseUrl ? config.baseUrl.replace(/\/$/, '') : 'https://api.openai.com/v1',
-            apiKey: config.apiKey || '',
+            baseUrl: (config.baseUrl ?? '').trim().replace(/\/+$/, '') || 'https://api.openai.com/v1',
+            apiKey: (config.apiKey ?? '').trim(),
             modelId: cleanStr(config.modelId) || 'gpt-4o',
             temperature: cleanStr(config.temperature) as number | undefined,
             frequencyPenalty: cleanStr(config.frequency_penalty) as number | undefined,
@@ -36,12 +41,17 @@ export class OpenAIProvider implements LLMProvider {
             outputPrice: cleanStr(config.outputPrice) as number | undefined,
             useChatTemplateKwargs: (settings['useChatTemplateKwargs'] === undefined ? false : settings['useChatTemplateKwargs']) as boolean,
             enableThinking: (settings['enableThinking'] === undefined ? false : settings['enableThinking']) as boolean,
-            reasoningEffort: (settings['reasoningEffort'] === undefined ? 'low' : settings['reasoningEffort']) as string
+            reasoningEffort: (settings['reasoningEffort'] === undefined ? OPENAI_DEFAULT_REASONING_EFFORT : settings['reasoningEffort']) as string
         };
     }
 
     isConfigured(config: LLMProviderConfig): boolean {
-        return !!(config.apiKey && config.apiKey.trim()) && !!(config.baseUrl && config.baseUrl.trim());
+        return !!(config.baseUrl && config.baseUrl.trim());
+    }
+
+    /** Local OpenAI-compatible servers need no key; a service that does answers 401. */
+    private authHeaders(apiKey: string): Record<string, string> {
+        return apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {};
     }
 
     getCapabilities(config?: LLMProviderConfig): LLMProviderCapabilities {
@@ -175,6 +185,23 @@ export class OpenAIProvider implements LLMProvider {
         return 'gpt-4o';
     }
 
+    /** Lists `{baseUrl}/models` as given; the caller decides whether to retry with `/v1` appended. */
+    async probe(config: LLMProviderConfig, opts: { signal?: AbortSignal } = {}): Promise<LLMProbeResult> {
+        const c = this.extractConfig(config);
+        const res = await probeJson(`${c.baseUrl}/models`, { headers: this.authHeaders(c.apiKey) }, opts.signal);
+        if (!res.ok) return res;
+
+        const data = res.json && typeof res.json === 'object' ? (res.json as { data?: unknown }).data : undefined;
+        if (!Array.isArray(data)) return { ok: false, reason: 'not-this-server', message: res.snippet };
+
+        return {
+            ok: true,
+            models: data
+                .filter((m): m is { id: string } => typeof m?.id === 'string')
+                .map(m => ({ id: m.id }))
+        };
+    }
+
     async *generateContentStream(
         providerConfig: LLMProviderConfig,
         contents: LLMContent[],
@@ -183,7 +210,6 @@ export class OpenAIProvider implements LLMProvider {
     ): AsyncGenerator<LLMStreamChunk> {
         const c = this.extractConfig(providerConfig);
         const baseUrl = c.baseUrl;
-        const apiKey = c.apiKey;
 
         const messages = this.toOpenAIMessages(systemInstruction, contents);
 
@@ -233,7 +259,7 @@ export class OpenAIProvider implements LLMProvider {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${apiKey}`
+                    ...this.authHeaders(c.apiKey)
                 },
                 body: JSON.stringify(requestBody),
                 signal: config.signal

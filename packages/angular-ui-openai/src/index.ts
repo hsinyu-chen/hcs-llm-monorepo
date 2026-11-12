@@ -2,7 +2,7 @@ import { Component, inject, output, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LLM_CONFIG_DATA, LLM_TRANSLATIONS, DEFAULT_LLM_TRANSLATIONS } from '@hcs/llm-angular-common';
-import { OpenAIProvider } from '@hcs/llm-provider-openai';
+import { OPENAI_DEFAULT_REASONING_EFFORT } from '@hcs/llm-provider-openai';
 
 @Component({
   selector: 'hcs-openai-config',
@@ -60,21 +60,22 @@ import { OpenAIProvider } from '@hcs/llm-provider-openai';
       <div class="form-grid columns-2">
           <div class="form-group-vertical">
               <label for="temp">{{ i18n().settings.temperature }}</label>
-              <input id="temp" type="number" step="0.1" min="0" max="2" 
+              <input id="temp" type="number" step="0.1" min="0" max="2" [placeholder]="i18n().settings.serverDefault"
                      [(ngModel)]="config.settings.temperature" (ngModelChange)="configChanged.emit()">
           </div>
           <div class="form-group-vertical">
               <label for="maxTokens">{{ i18n().settings.maxTokens }}</label>
-              <input id="maxTokens" type="number" step="128" min="1" 
+              <input id="maxTokens" type="number" step="128" min="1" [placeholder]="i18n().settings.serverDefault"
                      [(ngModel)]="config.settings.maxOutputTokens" (ngModelChange)="configChanged.emit()">
+              <small class="field-hint">{{ i18n().settings.maxTokensIncludesThinking }}</small>
           </div>
           <div class="form-group-vertical">
               <label for="freq">{{ i18n().settings.freqPenalty }}</label>
-              <input id="freq" type="number" step="0.05" [(ngModel)]="config.settings.frequency_penalty" (ngModelChange)="configChanged.emit()">
+              <input id="freq" type="number" step="0.05" [placeholder]="i18n().settings.serverDefault" [(ngModel)]="config.settings.frequency_penalty" (ngModelChange)="configChanged.emit()">
           </div>
           <div class="form-group-vertical">
               <label for="pres">{{ i18n().settings.presPenalty }}</label>
-              <input id="pres" type="number" step="0.05" [(ngModel)]="config.settings.presence_penalty" (ngModelChange)="configChanged.emit()">
+              <input id="pres" type="number" step="0.05" [placeholder]="i18n().settings.serverDefault" [(ngModel)]="config.settings.presence_penalty" (ngModelChange)="configChanged.emit()">
           </div>
       </div>
 
@@ -104,7 +105,8 @@ import { OpenAIProvider } from '@hcs/llm-provider-openai';
           @if (config.settings.additionalSettings!['enableThinking']) {
             <div class="form-group">
               <label>Reasoning Effort:</label>
-              <select [(ngModel)]="config.settings.additionalSettings!['reasoningEffort']" (ngModelChange)="configChanged.emit()">
+              <select [ngModel]="config.settings.additionalSettings!['reasoningEffort'] ?? defaultReasoningEffort"
+                      (ngModelChange)="config.settings.additionalSettings!['reasoningEffort'] = $event; configChanged.emit()">
                 <option value="low">Low</option>
                 <option value="medium">Medium</option>
                 <option value="high">High</option>
@@ -123,6 +125,8 @@ export class OpenAIConfigComponent {
   // I18n bridge
   private customTranslations = inject(LLM_TRANSLATIONS, { optional: true });
   public i18n = computed(() => this.customTranslations || DEFAULT_LLM_TRANSLATIONS);
+
+  readonly defaultReasoningEffort = OPENAI_DEFAULT_REASONING_EFFORT;
 
   presets = [
     { id: 'gpt-5.2', input: 1.75, cached: 0.175, output: 14.00 },

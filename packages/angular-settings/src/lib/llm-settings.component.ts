@@ -21,8 +21,14 @@ import {
     LLM_TRANSLATIONS, 
     DEFAULT_LLM_TRANSLATIONS,
     LLM_STORAGE_TOKEN,
-    LLM_CONFIG_DATA
+    LLM_CONFIG_DATA,
+    LLM_CONFIRM
 } from '@hcs/llm-angular-common';
+
+interface TestStatus {
+    kind: 'success' | 'error';
+    text: string;
+}
 
 // These would normally be imported from the provider-ui packages
 // If we haven't created them yet, we'll need to define where they come from.
@@ -37,12 +43,14 @@ import {
 export class LLMSettingsComponent implements OnInit, OnDestroy {
     settingsClosed = output<void>();
     showPricing = input<boolean>(true);
+    showRateLimits = input<boolean>(true);
 
     // These should be provided in the app root or via a module
     private manager = inject(LLMManager);
     private storage = inject(LLM_STORAGE_TOKEN);
     private injector = inject(Injector);
-    
+    private confirm = inject(LLM_CONFIRM);
+
     // I18n bridge
     private customTranslations = inject(LLM_TRANSLATIONS, { optional: true });
     public i18n = computed(() => this.customTranslations || DEFAULT_LLM_TRANSLATIONS);
@@ -109,22 +117,16 @@ export class LLMSettingsComponent implements OnInit, OnDestroy {
             const providerInstance = this.manager.getProvider(newProvider);
             let defaultModelId = providerInstance ? providerInstance.getDefaultModelId() : '';
 
-            const newSettings: any = { ...current.settings, modelId: defaultModelId };
-
-            if (newProvider === 'gemini') {
-                newSettings.thinkingLevel = 'minimal';
-            }
-
             this.editingConfig.set({
                 ...current,
                 provider: newProvider,
-                settings: newSettings
+                settings: { ...current.settings, modelId: defaultModelId }
             });
         }
     }
 
-    // Test connection status
-    testStatus = signal<string>('');
+    testStatus = signal<TestStatus | null>(null);
+    readonly testStatusIcons: Record<TestStatus['kind'], string> = { success: '✅', error: '❌' };
     testResponse = signal<string>('');
     isTesting = signal(false);
 
@@ -183,21 +185,22 @@ export class LLMSettingsComponent implements OnInit, OnDestroy {
             }
         };
         this.editingConfig.set(newConfig);
-        this.testStatus.set('');
+        this.testStatus.set(null);
     }
 
     editConfig(config: LLMConfig) {
         const cloned = JSON.parse(JSON.stringify(config));
         this.editingConfig.set(cloned);
-        this.testStatus.set('');
+        this.testStatus.set(null);
     }
 
     copyConfig(config: LLMConfig) {
         const cloned = JSON.parse(JSON.stringify(config));
         cloned.id = crypto.randomUUID();
-        cloned.name = `${cloned.name} (Copy)`;
+        // Function replacer: a `$` in the profile name must not be read as a replacement pattern.
+        cloned.name = this.i18n().settings.copyName.replace('{{name}}', () => cloned.name);
         this.editingConfig.set(cloned);
-        this.testStatus.set('');
+        this.testStatus.set(null);
     }
 
     async saveConfig() {
@@ -222,7 +225,7 @@ export class LLMSettingsComponent implements OnInit, OnDestroy {
     }
 
     async deleteConfig(id: string) {
-        if (confirm(this.i18n().settings.confirmDelete)) {
+        if (await this.confirm(this.i18n().settings.confirmDelete)) {
             await this.storage.delete(id);
             await this.loadConfigs();
         }
@@ -232,8 +235,9 @@ export class LLMSettingsComponent implements OnInit, OnDestroy {
         const config = this.editingConfig();
         if (!config) return;
 
+        const t = this.i18n().settings;
         this.isTesting.set(true);
-        this.testStatus.set(this.i18n().settings.testing);
+        this.testStatus.set(null);
         this.testResponse.set('');
 
         try {
@@ -255,13 +259,12 @@ export class LLMSettingsComponent implements OnInit, OnDestroy {
                 }
             }
 
-            if (result) {
-                this.testStatus.set('✅ ' + this.i18n().settings.testSuccess);
-            } else {
-                this.testStatus.set('❌ Empty response');
-            }
+            this.testStatus.set(result
+                ? { kind: 'success', text: t.testSuccess }
+                : { kind: 'error', text: t.testEmpty });
         } catch (e: any) {
-            this.testStatus.set('❌ ' + (e.message || String(e)));
+            const msg = e?.message || String(e);
+            this.testStatus.set({ kind: 'error', text: t.testError.replace('{{msg}}', () => msg) });
         } finally {
             this.isTesting.set(false);
         }

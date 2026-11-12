@@ -1,6 +1,6 @@
-import { ILLMStorage } from './llm-storage';
-import { LLMProviderRegistry } from './llm-registry';
-import { LLMConfig, LLMProvider } from './llm-provider';
+import { ILLMStorage } from './llm-storage.js';
+import { LLMProviderRegistry } from './llm-registry.js';
+import { LLMConfig, LLMProvider } from './llm-provider.js';
 
 /**
  * LLMManager - Orchestrates Multiple LLM Configurations.

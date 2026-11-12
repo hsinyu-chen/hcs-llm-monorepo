@@ -71,11 +71,15 @@ describe('OpenAIProvider request body', () => {
         }
     });
 
-    it('sends chat_template_kwargs under extra_body when useChatTemplateKwargs is on', async () => {
+    it('sends chat_template_kwargs at the top level when useChatTemplateKwargs is on', async () => {
         const { body } = await generate({ useChatTemplateKwargs: true, enableThinking: true, reasoningEffort: 'high' });
-        assert.deepEqual(body.extra_body, {
-            chat_template_kwargs: { enable_thinking: true, reasoning_effort: 'high' }
-        });
+        assert.deepEqual(body.chat_template_kwargs, { enable_thinking: true, reasoning_effort: 'high' });
+        assert.equal('extra_body' in body, false);
+    });
+
+    it('defaults chat_template_kwargs to thinking off and low effort', async () => {
+        const { body } = await generate({ useChatTemplateKwargs: true });
+        assert.deepEqual(body.chat_template_kwargs, { enable_thinking: false, reasoning_effort: 'low' });
     });
 
     it('sends no chat_template_kwargs when useChatTemplateKwargs is off', async () => {

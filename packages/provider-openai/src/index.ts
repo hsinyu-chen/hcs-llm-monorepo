@@ -219,12 +219,11 @@ export class OpenAIProvider implements LLMProvider {
                     }
                 },
             } : {}),
+            // Top level of the body: the OpenAI Python SDK's `extra_body` argument is flattened there by the SDK.
             ...(c.useChatTemplateKwargs ? {
-                extra_body: {
-                    chat_template_kwargs: {
-                        enable_thinking: c.enableThinking,
-                        reasoning_effort: c.reasoningEffort
-                    }
+                chat_template_kwargs: {
+                    enable_thinking: c.enableThinking,
+                    reasoning_effort: c.reasoningEffort
                 }
             } : {})
         };

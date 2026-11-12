@@ -24,8 +24,8 @@ export class OpenAIProvider implements LLMProvider {
         const settings = config.additionalSettings || {};
 
         return {
-            baseUrl: config.baseUrl ? config.baseUrl.replace(/\/$/, '') : 'https://api.openai.com/v1',
-            apiKey: config.apiKey || '',
+            baseUrl: (config.baseUrl ?? '').trim().replace(/\/+$/, '') || 'https://api.openai.com/v1',
+            apiKey: (config.apiKey ?? '').trim(),
             modelId: cleanStr(config.modelId) || 'gpt-4o',
             temperature: cleanStr(config.temperature) as number | undefined,
             frequencyPenalty: cleanStr(config.frequency_penalty) as number | undefined,
@@ -41,7 +41,12 @@ export class OpenAIProvider implements LLMProvider {
     }
 
     isConfigured(config: LLMProviderConfig): boolean {
-        return !!(config.apiKey && config.apiKey.trim()) && !!(config.baseUrl && config.baseUrl.trim());
+        return !!(config.baseUrl && config.baseUrl.trim());
+    }
+
+    /** Local OpenAI-compatible servers need no key; a service that does answers 401. */
+    private authHeaders(apiKey: string): Record<string, string> {
+        return apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {};
     }
 
     getCapabilities(config?: LLMProviderConfig): LLMProviderCapabilities {
@@ -183,7 +188,6 @@ export class OpenAIProvider implements LLMProvider {
     ): AsyncGenerator<LLMStreamChunk> {
         const c = this.extractConfig(providerConfig);
         const baseUrl = c.baseUrl;
-        const apiKey = c.apiKey;
 
         const messages = this.toOpenAIMessages(systemInstruction, contents);
 
@@ -233,7 +237,7 @@ export class OpenAIProvider implements LLMProvider {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${apiKey}`
+                    ...this.authHeaders(c.apiKey)
                 },
                 body: JSON.stringify(requestBody),
                 signal: config.signal

@@ -433,7 +433,6 @@ export class LlamaCppProvider implements LLMProvider {
 
         const reasoningBudgetMap: Record<string, number> = { low: 512, medium: 2048, high: 8192 };
         const thinkingEnabled = c.enableThinking;
-        const reasoningBudget = thinkingEnabled ? (reasoningBudgetMap[c.reasoningEffort] ?? 2048) : 0;
 
         const tools = config.tools && config.tools.length > 0
             ? config.tools.map(t => ({
@@ -475,7 +474,7 @@ export class LlamaCppProvider implements LLMProvider {
                 }
             } : {}),
             chat_template_kwargs: { enable_thinking: thinkingEnabled },
-            reasoning_budget: reasoningBudget
+            ...(thinkingEnabled ? { reasoning_budget_tokens: reasoningBudgetMap[c.reasoningEffort] ?? 2048 } : {})
         };
 
         const saveAfterGen = typeof config.cachedContentName === 'string' && config.cachedContentName.length > 0;

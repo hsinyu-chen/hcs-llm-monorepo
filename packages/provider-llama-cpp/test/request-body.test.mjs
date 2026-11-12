@@ -90,9 +90,27 @@ describe('LlamaCppProvider request body', () => {
         assert.deepEqual((await generate()).body.chat_template_kwargs, { enable_thinking: false });
     });
 
-    it('sends the reasoning budget', async () => {
-        assert.equal((await generate({ enableThinking: true })).body.reasoning_budget, 512);
-        assert.equal((await generate()).body.reasoning_budget, 0);
+    it('sends reasoning_budget_tokens for each reasoning effort when thinking is on', async () => {
+        const expected = { low: 512, medium: 2048, high: 8192, unknown: 2048 };
+        for (const [reasoningEffort, budget] of Object.entries(expected)) {
+            const { body } = await generate({ enableThinking: true, reasoningEffort });
+            assert.equal(body.reasoning_budget_tokens, budget, reasoningEffort);
+            assert.equal('reasoning_budget' in body, false, reasoningEffort);
+        }
+    });
+
+    it('defaults reasoning_budget_tokens to the low effort when thinking is on', async () => {
+        const { body } = await generate({ enableThinking: true });
+        assert.equal(body.reasoning_budget_tokens, 512);
+    });
+
+    it('sends no reasoning budget when thinking is off', async () => {
+        for (const settings of [{}, { enableThinking: false, reasoningEffort: 'high' }]) {
+            const { body } = await generate(settings);
+            for (const key of ['reasoning_budget_tokens', 'thinking_budget_tokens', 'reasoning_budget']) {
+                assert.equal(key in body, false, key);
+            }
+        }
     });
 
     it('sends a json_schema response_format for a response schema', async () => {

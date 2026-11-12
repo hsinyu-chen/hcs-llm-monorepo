@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { OpenAIProvider } from '../dist/index.js';
+import { OpenAIProvider, OPENAI_DEFAULT_REASONING_EFFORT } from '../dist/index.js';
 
 const BASE_URL = 'http://openai.test/v1';
 
@@ -50,6 +50,24 @@ describe('OpenAIProvider request body', () => {
         assert.equal(request.headers['Authorization'], 'Bearer test-key');
     });
 
+    it('sends no Authorization header when the API key is empty or blank', async () => {
+        for (const apiKey of [undefined, '', '   ']) {
+            const { request } = await generate({}, {}, { apiKey });
+            assert.equal('Authorization' in request.headers, false, JSON.stringify(apiKey));
+            assert.equal(request.headers['Content-Type'], 'application/json');
+        }
+    });
+
+    it('sends the API key without surrounding whitespace', async () => {
+        const { request } = await generate({}, {}, { apiKey: '  test-key\n' });
+        assert.equal(request.headers['Authorization'], 'Bearer test-key');
+    });
+
+    it('trims the base URL and drops trailing slashes without adding /v1', async () => {
+        const { request } = await generate({}, {}, { baseUrl: '  http://openai.test/  ' });
+        assert.equal(request.url, 'http://openai.test/chat/completions');
+    });
+
     it('sends the model, streaming options and sampling settings', async () => {
         const { body } = await generate({}, {}, {
             temperature: 1, frequency_penalty: 0.1, presence_penalty: 0.2, maxOutputTokens: 256
@@ -79,7 +97,8 @@ describe('OpenAIProvider request body', () => {
 
     it('defaults chat_template_kwargs to thinking off and low effort', async () => {
         const { body } = await generate({ useChatTemplateKwargs: true });
-        assert.deepEqual(body.chat_template_kwargs, { enable_thinking: false, reasoning_effort: 'low' });
+        assert.equal(OPENAI_DEFAULT_REASONING_EFFORT, 'low');
+        assert.deepEqual(body.chat_template_kwargs, { enable_thinking: false, reasoning_effort: OPENAI_DEFAULT_REASONING_EFFORT });
     });
 
     it('sends no chat_template_kwargs when useChatTemplateKwargs is off', async () => {
@@ -105,5 +124,16 @@ describe('OpenAIProvider request body', () => {
         const { chunks } = await generate();
         assert.deepEqual(chunks.filter(c => c.text !== undefined), [{ text: 'Hi' }]);
         assert.deepEqual(chunks.find(c => c.usageMetadata)?.usageMetadata, { prompt: 3, candidates: 1, cached: 0 });
+    });
+});
+
+describe('OpenAIProvider isConfigured', () => {
+    it('requires only a base URL', () => {
+        const provider = new OpenAIProvider();
+        assert.equal(provider.isConfigured({ baseUrl: BASE_URL }), true);
+        assert.equal(provider.isConfigured({ baseUrl: BASE_URL, apiKey: '  ' }), true);
+        assert.equal(provider.isConfigured({ baseUrl: BASE_URL, apiKey: 'test-key' }), true);
+        assert.equal(provider.isConfigured({ baseUrl: '   ', apiKey: 'test-key' }), false);
+        assert.equal(provider.isConfigured({ apiKey: 'test-key' }), false);
     });
 });

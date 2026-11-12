@@ -7,7 +7,10 @@ import {
     LLMGenerateConfig,
     LLMStreamChunk,
     LLMModelDefinition,
-    LLMCacheInfo
+    LLMCacheInfo,
+    LLMProbeResult,
+    LLMProbeSampling,
+    probeJson
 } from '@hcs/llm-core';
 
 interface LlamaCppToolCallAccumulator {
@@ -25,6 +28,87 @@ interface PropsShape {
         supports_tool_calls?: boolean;
         supports_parallel_tool_calls?: boolean;
     } | null;
+    /** Server defaults from `default_generation_settings.params`; null when it reports none. */
+    sampling: LLMProbeSampling | null;
+    /** Every llama-server /props response has `default_generation_settings`. */
+    hasGenerationSettings: boolean;
+}
+
+const EMPTY_PROPS: PropsShape = {
+    modelAlias: null,
+    contextSize: null,
+    chatTemplate: null,
+    chatTemplateCaps: null,
+    sampling: null,
+    hasGenerationSettings: false
+};
+
+const SAMPLING_PARAMS: [keyof LLMProbeSampling, string][] = [
+    ['temperature', 'temperature'],
+    ['topP', 'top_p'],
+    ['topK', 'top_k'],
+    ['minP', 'min_p'],
+    ['repeatPenalty', 'repeat_penalty']
+];
+
+function parseProps(data: any): PropsShape {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return EMPTY_PROPS;
+
+    let modelAlias: string | null = null;
+    if (data.model_alias) {
+        modelAlias = data.model_alias;
+    } else if (data.model_path) {
+        modelAlias = String(data.model_path).split(/[/\\]/).pop() || data.model_path;
+    }
+
+    const generation = data.default_generation_settings;
+    const hasGenerationSettings = !!generation && typeof generation === 'object';
+
+    // llama.cpp server reports context size in a few historical
+    // locations depending on version — try them in order.
+    const rawCtx =
+        data.n_ctx ??
+        generation?.n_ctx ??
+        generation?.params?.n_ctx ??
+        null;
+    const contextSize = typeof rawCtx === 'number' && rawCtx > 0 ? rawCtx : null;
+
+    const chatTemplate = typeof data.chat_template === 'string' ? data.chat_template : null;
+    // Newer llama-server builds parse the chat template and expose
+    // structured booleans here. Older builds omit it entirely.
+    const chatTemplateCaps = data.chat_template_caps && typeof data.chat_template_caps === 'object'
+        ? data.chat_template_caps as PropsShape['chatTemplateCaps']
+        : null;
+
+    const params = hasGenerationSettings ? generation.params : undefined;
+    let sampling: LLMProbeSampling | null = null;
+    if (params && typeof params === 'object') {
+        for (const [field, key] of SAMPLING_PARAMS) {
+            if (typeof params[key] === 'number') (sampling ??= {})[field] = params[key];
+        }
+    }
+
+    return { modelAlias, contextSize, chatTemplate, chatTemplateCaps, sampling, hasGenerationSettings };
+}
+
+function toolSupportFromProps(props: PropsShape): { supportsNativeToolCalls: boolean; supportsParallelToolCalls: boolean } {
+    const caps = props.chatTemplateCaps;
+    return {
+        supportsNativeToolCalls: caps
+            ? !!(caps.supports_tools && caps.supports_tool_calls)
+            : detectToolSupportFromTemplate(props.chatTemplate),
+        supportsParallelToolCalls: !!caps?.supports_parallel_tool_calls
+    };
+}
+
+function detectToolSupportFromTemplate(chatTemplate: string | null): boolean {
+    if (!chatTemplate) return false;
+    // Tokens / keywords that appear in tool-aware chat templates:
+    //   <tool_call>          — Hermes-2-Pro, Qwen 2.5
+    //   <|python_tag|>       — Llama 3.1+
+    //   [TOOL_CALLS] / [AVAILABLE_TOOLS] — Mistral / Mixtral
+    //   tool_call_id         — generic OpenAI-shape templates
+    return /<tool_call>|<\|python_tag\|>|\[TOOL_CALLS\]|\[AVAILABLE_TOOLS\]|tool_call_id/i.test(chatTemplate);
 }
 
 interface PropsCacheEntry {
@@ -118,8 +202,15 @@ export class LlamaCppProvider implements LLMProvider {
         if (baseUrl === undefined) {
             LlamaCppProvider.propsCache.clear();
         } else {
-            LlamaCppProvider.propsCache.delete(baseUrl.replace(/\/$/, ''));
+            LlamaCppProvider.propsCache.delete(LlamaCppProvider.normalizeBaseUrl(baseUrl));
         }
+    }
+
+    /** The server root: llama-server serves /props, /tokenize and /slots there and
+     *  the chat endpoint under /v1, so a pasted OpenAI-style `…/v1` URL is accepted too. */
+    private static normalizeBaseUrl(baseUrl: string | undefined): string {
+        const root = (baseUrl ?? '').trim().replace(/\/+$/, '').replace(/\/v1$/i, '');
+        return root || 'http://localhost:8080';
     }
 
     private extractConfig(config: LLMProviderConfig) {
@@ -127,7 +218,7 @@ export class LlamaCppProvider implements LLMProvider {
         const settings = config.additionalSettings || {};
 
         return {
-            baseUrl: config.baseUrl ? config.baseUrl.replace(/\/$/, '') : 'http://localhost:8080',
+            baseUrl: LlamaCppProvider.normalizeBaseUrl(config.baseUrl),
             modelId: cleanStr(config.modelId) || 'local-model',
             temperature: cleanStr(config.temperature) as number | undefined,
             frequencyPenalty: cleanStr(config.frequency_penalty) as number | undefined,
@@ -189,11 +280,7 @@ export class LlamaCppProvider implements LLMProvider {
      */
     async probeNativeToolSupport(config: LLMProviderConfig): Promise<boolean> {
         const { baseUrl } = this.extractConfig(config);
-        const props = await this.fetchProps(baseUrl);
-        if (props.chatTemplateCaps) {
-            return !!(props.chatTemplateCaps.supports_tools && props.chatTemplateCaps.supports_tool_calls);
-        }
-        return this.detectToolSupportFromTemplate(props.chatTemplate);
+        return toolSupportFromProps(await this.fetchProps(baseUrl)).supportsNativeToolCalls;
     }
 
     /**
@@ -204,18 +291,27 @@ export class LlamaCppProvider implements LLMProvider {
      */
     async probeParallelToolSupport(config: LLMProviderConfig): Promise<boolean> {
         const { baseUrl } = this.extractConfig(config);
-        const props = await this.fetchProps(baseUrl);
-        return !!props.chatTemplateCaps?.supports_parallel_tool_calls;
+        return toolSupportFromProps(await this.fetchProps(baseUrl)).supportsParallelToolCalls;
     }
 
-    private detectToolSupportFromTemplate(chatTemplate: string | null): boolean {
-        if (!chatTemplate) return false;
-        // Tokens / keywords that appear in tool-aware chat templates:
-        //   <tool_call>          — Hermes-2-Pro, Qwen 2.5
-        //   <|python_tag|>       — Llama 3.1+
-        //   [TOOL_CALLS] / [AVAILABLE_TOOLS] — Mistral / Mixtral
-        //   tool_call_id         — generic OpenAI-shape templates
-        return /<tool_call>|<\|python_tag\|>|\[TOOL_CALLS\]|\[AVAILABLE_TOOLS\]|tool_call_id/i.test(chatTemplate);
+    /** Reads `/props` directly, bypassing `propsCache`, so the result reflects the server as it is now. */
+    async probe(config: LLMProviderConfig, opts: { signal?: AbortSignal } = {}): Promise<LLMProbeResult> {
+        const c = this.extractConfig(config);
+        const res = await probeJson(`${c.baseUrl}/props`, {}, opts.signal);
+        if (!res.ok) return res;
+
+        const props = parseProps(res.json);
+        if (!props.hasGenerationSettings) return { ok: false, reason: 'not-this-server', message: res.snippet };
+
+        return {
+            ok: true,
+            models: [{
+                id: props.modelAlias || c.modelId,
+                ...(props.contextSize !== null ? { contextSize: props.contextSize } : {})
+            }],
+            ...(props.sampling ? { sampling: props.sampling } : {}),
+            ...toolSupportFromProps(props)
+        };
     }
 
     /**
@@ -316,16 +412,15 @@ export class LlamaCppProvider implements LLMProvider {
         // milliseconds, so without dedup we'd issue ~5 identical /props
         // requests per profile. With this cache, the first caller fetches and
         // every other caller awaits the same promise.
-        const key = baseUrl.replace(/\/$/, '');
         const now = Date.now();
-        const cached = LlamaCppProvider.propsCache.get(key);
+        const cached = LlamaCppProvider.propsCache.get(baseUrl);
         if (cached && cached.expiresAt > now) {
             if (cached.pending) return cached.pending;
             if (cached.value) return cached.value;
         }
 
         const promise = this.doFetchProps(baseUrl);
-        LlamaCppProvider.propsCache.set(key, {
+        LlamaCppProvider.propsCache.set(baseUrl, {
             value: null,
             pending: promise,
             expiresAt: now + PROPS_CACHE_TTL_MS
@@ -339,9 +434,9 @@ export class LlamaCppProvider implements LLMProvider {
         // it so every resolved value survives at least the floor window —
         // otherwise the next caller arriving 1ms later bypasses cache and
         // triggers another full-timeout hang.
-        const existing = LlamaCppProvider.propsCache.get(key);
+        const existing = LlamaCppProvider.propsCache.get(baseUrl);
         if (existing && existing.pending === promise) {
-            LlamaCppProvider.propsCache.set(key, {
+            LlamaCppProvider.propsCache.set(baseUrl, {
                 value,
                 expiresAt: Math.max(existing.expiresAt, Date.now() + PROPS_CACHE_POST_RESOLVE_FLOOR_MS)
             });
@@ -350,50 +445,20 @@ export class LlamaCppProvider implements LLMProvider {
     }
 
     private async doFetchProps(baseUrl: string): Promise<PropsShape> {
-        const empty: PropsShape = { modelAlias: null, contextSize: null, chatTemplate: null, chatTemplateCaps: null };
         try {
             const response = await this.fetchWithTimeout(`${baseUrl}/props`, {}, {
                 timeoutMs: LlamaCppProvider.PROPS_TIMEOUT_MS,
                 onTimeoutError: () => new Error(`Props fetch timed out after ${LlamaCppProvider.PROPS_TIMEOUT_MS}ms`)
             });
-            if (!response.ok) return empty;
-            const data = await response.json();
-
-            let modelAlias: string | null = null;
-            if (data.model_alias) {
-                modelAlias = data.model_alias;
-            } else if (data.model_path) {
-                modelAlias = String(data.model_path).split(/[/\\]/).pop() || data.model_path;
-            }
-
-            // llama.cpp server reports context size in a few historical
-            // locations depending on version — try them in order.
-            const rawCtx =
-                data.n_ctx ??
-                data.default_generation_settings?.n_ctx ??
-                data.default_generation_settings?.params?.n_ctx ??
-                null;
-            const contextSize = typeof rawCtx === 'number' && rawCtx > 0 ? rawCtx : null;
-
-            const chatTemplate = typeof data.chat_template === 'string' ? data.chat_template : null;
-            // Newer llama-server builds parse the chat template and expose
-            // structured booleans here. Older builds omit it entirely.
-            const chatTemplateCaps = data.chat_template_caps && typeof data.chat_template_caps === 'object'
-                ? data.chat_template_caps as {
-                    supports_tools?: boolean;
-                    supports_tool_calls?: boolean;
-                    supports_parallel_tool_calls?: boolean;
-                }
-                : null;
-
-            return { modelAlias, contextSize, chatTemplate, chatTemplateCaps };
+            if (!response.ok) return EMPTY_PROPS;
+            return parseProps(await response.json());
         } catch (e) {
             // Used to be a silent swallow that covered every failure mode
             // (4xx, parse, net, and now timeout). Warn here so a hung/dead
             // server is visible without changing the graceful-degrade
             // contract (empty PropsShape on any failure).
             console.warn(`[LlamaCpp] /props fetch failed for ${baseUrl}:`, e);
-            return empty;
+            return EMPTY_PROPS;
         }
     }
 
@@ -460,7 +525,8 @@ export class LlamaCppProvider implements LLMProvider {
             ...(c.topP != null ? { top_p: c.topP } : {}),
             ...(c.topK != null ? { top_k: c.topK } : {}),
             ...(c.minP != null ? { min_p: c.minP } : {}),
-            ...(c.repetitionPenalty != null ? { repetition_penalty: c.repetitionPenalty } : {}),
+            // llama-server's sampling field is `repeat_penalty`; it has no `repetition_penalty` alias.
+            ...(c.repetitionPenalty != null ? { repeat_penalty: c.repetitionPenalty } : {}),
             ...(tools ? { tools } : {}),
             ...(config.toolConfig ? { tool_choice: config.toolConfig } : {}),
             ...(config.responseSchema && !tools ? {

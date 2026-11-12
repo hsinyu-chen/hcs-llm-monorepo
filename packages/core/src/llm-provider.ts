@@ -145,6 +145,35 @@ export interface LLMProviderCapabilities {
     supportsParallelToolCalls?: boolean;
 }
 
+export interface LLMProbeSampling {
+    temperature?: number;
+    topP?: number;
+    topK?: number;
+    minP?: number;
+    repeatPenalty?: number;
+}
+
+export type LLMProbeResult =
+    | {
+        ok: true;
+        /** The first entry is the model the server has loaded or uses by default; llama.cpp always returns one
+         *  entry, while an OpenAI-compatible server with nothing loaded returns an empty list;
+         *  entries without a string id are skipped there. */
+        models: { id: string; contextSize?: number }[];
+        /** The server's default sampling values; present only when the server reports them. */
+        sampling?: LLMProbeSampling;
+        supportsNativeToolCalls?: boolean;
+        supportsParallelToolCalls?: boolean;
+    }
+    | {
+        ok: false;
+        reason: 'unreachable' | 'unauthorized' | 'http' | 'not-this-server';
+        /** HTTP status for 'http' and 'unauthorized'. */
+        status?: number;
+        /** Raw error text for display as plain text. */
+        message?: string;
+    };
+
 /**
  * The main interface that all LLM providers must implement.
  */
@@ -185,6 +214,12 @@ export interface LLMProvider {
      * Implementations should follow the same cheap/tolerant contract.
      */
     probeParallelToolSupport?(config: LLMProviderConfig): Promise<boolean>;
+    /**
+     * Optional live check of the endpoint: one request, no inference and no
+     * cache. Never throws for a failed check, which is reported as
+     * `{ ok: false, reason }`; throws the signal's reason when `opts.signal` aborts.
+     */
+    probe?(config: LLMProviderConfig, opts?: { signal?: AbortSignal }): Promise<LLMProbeResult>;
     getAvailableModels(config: LLMProviderConfig): LLMModelDefinition[] | Promise<LLMModelDefinition[]>;
     getDefaultModelId(): string;
     getPreview?(contents: LLMContent[]): LLMContent[];

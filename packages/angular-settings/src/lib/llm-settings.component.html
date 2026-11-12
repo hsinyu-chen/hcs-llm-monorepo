@@ -52,7 +52,8 @@
                 <ng-template [cdkPortalOutlet]="configPortal()" (attached)="onPortalAttached($event)"></ng-template>
                 }
             </div>
-            
+
+            @if (showRateLimits()) {
             <div class="rate-limit-settings">
                 <h4>{{ i18n().settings.rateLimitTitle }}</h4>
                 <div class="form-grid columns-2">
@@ -70,6 +71,7 @@
                     </div>
                 </div>
             </div>
+            }
 
             @if (modelPricing()) {
             <div class="pricing-estimation">

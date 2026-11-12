@@ -43,6 +43,7 @@ interface TestStatus {
 export class LLMSettingsComponent implements OnInit, OnDestroy {
     settingsClosed = output<void>();
     showPricing = input<boolean>(true);
+    showRateLimits = input<boolean>(true);
 
     // These should be provided in the app root or via a module
     private manager = inject(LLMManager);

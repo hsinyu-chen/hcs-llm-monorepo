@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { LlamaCppProvider } from '../dist/index.js';
+import { LLAMA_DEFAULT_REASONING_EFFORT, LLAMA_REASONING_BUDGETS, LlamaCppProvider, resolveLlamaReasoningEffort } from '../dist/index.js';
 
 const BASE_URL = 'http://llama.test';
 
@@ -85,14 +85,59 @@ describe('LlamaCppProvider request body', () => {
         assert.equal('repeat_penalty' in body, false);
     });
 
+    it('sends the max tokens setting as max_tokens', async () => {
+        const { body } = await generate({}, {}, { maxOutputTokens: 4096 });
+        assert.equal(body.max_tokens, 4096);
+        assert.equal('n_predict' in body, false);
+    });
+
+    it('omits max_tokens when the max tokens setting is not set', async () => {
+        for (const configOverrides of [{}, { maxOutputTokens: '' }]) {
+            const { body } = await generate({}, {}, configOverrides);
+            assert.equal('max_tokens' in body, false, JSON.stringify(configOverrides));
+        }
+    });
+
     it('sends enable_thinking in chat_template_kwargs', async () => {
         assert.deepEqual((await generate({ enableThinking: true })).body.chat_template_kwargs, { enable_thinking: true });
         assert.deepEqual((await generate()).body.chat_template_kwargs, { enable_thinking: false });
     });
 
-    it('sends the reasoning budget', async () => {
-        assert.equal((await generate({ enableThinking: true })).body.reasoning_budget, 512);
-        assert.equal((await generate()).body.reasoning_budget, 0);
+    it('sends reasoning_budget_tokens for each reasoning effort when thinking is on', async () => {
+        const expected = { low: 512, medium: 2048, high: 8192, unknown: 2048, toString: 2048 };
+        for (const [reasoningEffort, budget] of Object.entries(expected)) {
+            const { body } = await generate({ enableThinking: true, reasoningEffort });
+            assert.equal(body.reasoning_budget_tokens, budget, reasoningEffort);
+            assert.equal('reasoning_budget' in body, false, reasoningEffort);
+        }
+    });
+
+    it('exports the budget table and the medium default', () => {
+        assert.deepEqual(LLAMA_REASONING_BUDGETS, { low: 512, medium: 2048, high: 8192 });
+        assert.equal(LLAMA_DEFAULT_REASONING_EFFORT, 'medium');
+    });
+
+    it('resolves each tier to itself and any other value to the default', () => {
+        for (const effort of ['low', 'medium', 'high']) {
+            assert.equal(resolveLlamaReasoningEffort(effort), effort);
+        }
+        for (const value of [undefined, null, '', 'minimal', 'toString', 2048]) {
+            assert.equal(resolveLlamaReasoningEffort(value), LLAMA_DEFAULT_REASONING_EFFORT, String(value));
+        }
+    });
+
+    it('defaults reasoning_budget_tokens to the medium effort when thinking is on', async () => {
+        const { body } = await generate({ enableThinking: true });
+        assert.equal(body.reasoning_budget_tokens, 2048);
+    });
+
+    it('sends no reasoning budget when thinking is off', async () => {
+        for (const settings of [{}, { enableThinking: false, reasoningEffort: 'high' }]) {
+            const { body } = await generate(settings);
+            for (const key of ['reasoning_budget_tokens', 'thinking_budget_tokens', 'reasoning_budget']) {
+                assert.equal(key in body, false, key);
+            }
+        }
     });
 
     it('sends a json_schema response_format for a response schema', async () => {

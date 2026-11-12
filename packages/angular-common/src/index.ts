@@ -128,7 +128,7 @@ export const DEFAULT_LLM_TRANSLATIONS: LLMTranslations = {
         repeatPenalty: 'Repeat Penalty:',
         maxTokens: 'Max Tokens:',
         serverDefault: 'Server default',
-        maxTokensIncludesThinking: 'On a llama-server /v1 endpoint this limit also counts thinking tokens.'
+        maxTokensIncludesThinking: 'On llama-server this limit also counts thinking tokens.'
     }
 };
 
@@ -180,6 +180,6 @@ export const ZH_LLM_TRANSLATIONS: LLMTranslations = {
         repeatPenalty: '重複懲罰 (Repeat Penalty):',
         maxTokens: '最大 Token 數 (Max Tokens):',
         serverDefault: '伺服器預設',
-        maxTokensIncludesThinking: '接 llama-server 的 /v1 時，這個上限也包含思考的 token。'
+        maxTokensIncludesThinking: '在 llama-server 上，這個上限也包含思考的 token。'
     }
 };

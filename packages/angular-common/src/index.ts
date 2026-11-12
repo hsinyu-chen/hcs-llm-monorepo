@@ -32,7 +32,9 @@ export interface LLMTranslations {
         confirmDelete: string;
         testing: string;
         testSuccess: string;
+        /** `{{msg}}` is the error message. */
         testError: string;
+        testEmpty: string;
         newConfigName: string;
         configName: string;
         provider: string;
@@ -87,6 +89,7 @@ export const DEFAULT_LLM_TRANSLATIONS: LLMTranslations = {
         testing: 'Testing...',
         testSuccess: 'Connection successful!',
         testError: 'Connection failed: {{msg}}',
+        testEmpty: 'The model returned an empty response.',
         newConfigName: 'New Profile',
         configName: 'Profile Name:',
         provider: 'Provider:',
@@ -134,8 +137,9 @@ export const ZH_LLM_TRANSLATIONS: LLMTranslations = {
         test: '測試連線',
         confirmDelete: '確定要刪除此設定？',
         testing: '測試中...',
-        testSuccess: '✅ 連線成功',
-        testError: '❌ 連線錯誤: {{msg}}',
+        testSuccess: '連線成功',
+        testError: '連線錯誤: {{msg}}',
+        testEmpty: '模型回傳了空白回應。',
         newConfigName: '新設定',
         configName: '設定名稱:',
         provider: '供應商:',

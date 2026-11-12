@@ -24,6 +24,11 @@ import {
     LLM_CONFIG_DATA
 } from '@hcs/llm-angular-common';
 
+interface TestStatus {
+    kind: 'success' | 'error';
+    text: string;
+}
+
 // These would normally be imported from the provider-ui packages
 // If we haven't created them yet, we'll need to define where they come from.
 // For now, I'll assume they will be provided via a registry or injected.
@@ -123,8 +128,8 @@ export class LLMSettingsComponent implements OnInit, OnDestroy {
         }
     }
 
-    // Test connection status
-    testStatus = signal<string>('');
+    testStatus = signal<TestStatus | null>(null);
+    readonly testStatusIcons: Record<TestStatus['kind'], string> = { success: '✅', error: '❌' };
     testResponse = signal<string>('');
     isTesting = signal(false);
 
@@ -183,13 +188,13 @@ export class LLMSettingsComponent implements OnInit, OnDestroy {
             }
         };
         this.editingConfig.set(newConfig);
-        this.testStatus.set('');
+        this.testStatus.set(null);
     }
 
     editConfig(config: LLMConfig) {
         const cloned = JSON.parse(JSON.stringify(config));
         this.editingConfig.set(cloned);
-        this.testStatus.set('');
+        this.testStatus.set(null);
     }
 
     copyConfig(config: LLMConfig) {
@@ -198,7 +203,7 @@ export class LLMSettingsComponent implements OnInit, OnDestroy {
         // Function replacer: a `$` in the profile name must not be read as a replacement pattern.
         cloned.name = this.i18n().settings.copyName.replace('{{name}}', () => cloned.name);
         this.editingConfig.set(cloned);
-        this.testStatus.set('');
+        this.testStatus.set(null);
     }
 
     async saveConfig() {
@@ -233,8 +238,9 @@ export class LLMSettingsComponent implements OnInit, OnDestroy {
         const config = this.editingConfig();
         if (!config) return;
 
+        const t = this.i18n().settings;
         this.isTesting.set(true);
-        this.testStatus.set(this.i18n().settings.testing);
+        this.testStatus.set(null);
         this.testResponse.set('');
 
         try {
@@ -256,13 +262,12 @@ export class LLMSettingsComponent implements OnInit, OnDestroy {
                 }
             }
 
-            if (result) {
-                this.testStatus.set('✅ ' + this.i18n().settings.testSuccess);
-            } else {
-                this.testStatus.set('❌ Empty response');
-            }
+            this.testStatus.set(result
+                ? { kind: 'success', text: t.testSuccess }
+                : { kind: 'error', text: t.testEmpty });
         } catch (e: any) {
-            this.testStatus.set('❌ ' + (e.message || String(e)));
+            const msg = e?.message || String(e);
+            this.testStatus.set({ kind: 'error', text: t.testError.replace('{{msg}}', () => msg) });
         } finally {
             this.isTesting.set(false);
         }

@@ -101,10 +101,12 @@
                     <button class="secondary-btn" (click)="testConnection()" [disabled]="isTesting()">
                         {{ isTesting() ? i18n().settings.testing : i18n().settings.test }}
                     </button>
-                    <span class="status-text" [class.success]="testStatus().includes('✅')"
-                        [class.error]="testStatus().includes('❌')">
-                        {{ testStatus() }}
+                    @if (testStatus(); as status) {
+                    <span class="status-text" [class.success]="status.kind === 'success'"
+                        [class.error]="status.kind === 'error'">
+                        {{ testStatusIcons[status.kind] }} {{ status.text }}
                     </span>
+                    }
                 </div>
 
                 @if (testResponse()) {

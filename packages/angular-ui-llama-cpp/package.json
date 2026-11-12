@@ -2,6 +2,9 @@
   "name": "@hcs/llm-angular-ui-llama-cpp",
   "version": "1.0.0",
   "description": "Angular UI for Llama.cpp provider",
+  "dependencies": {
+    "@hcs/llm-provider-llama-cpp": "1.0.0"
+  },
   "peerDependencies": {
     "@angular/core": ">=16.0.0",
     "@hcs/llm-core": "1.0.0",

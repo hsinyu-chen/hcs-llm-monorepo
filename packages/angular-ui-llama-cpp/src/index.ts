@@ -2,7 +2,7 @@ import { Component, inject, output, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LLM_CONFIG_DATA, LLM_TRANSLATIONS, DEFAULT_LLM_TRANSLATIONS } from '@hcs/llm-angular-common';
-import { LlamaCppProvider } from '@hcs/llm-provider-llama-cpp';
+import { LLAMA_REASONING_BUDGETS, LlamaCppProvider, resolveLlamaReasoningEffort } from '@hcs/llm-provider-llama-cpp';
 
 @Component({
   selector: 'hcs-llama-config',
@@ -98,6 +98,7 @@ import { LlamaCppProvider } from '@hcs/llm-provider-llama-cpp';
           <div class="form-group-vertical">
               <label>{{ i18n().settings.maxTokens }}</label>
               <input type="number" step="256" [(ngModel)]="config.settings.maxOutputTokens" (ngModelChange)="configChanged.emit()" [placeholder]="i18n().settings.serverDefault">
+              <small class="field-hint">{{ i18n().settings.maxTokensIncludesThinking }}</small>
           </div>
       </div>
 
@@ -109,10 +110,11 @@ import { LlamaCppProvider } from '@hcs/llm-provider-llama-cpp';
       @if (config.settings.additionalSettings!['enableThinking']) {
         <div class="form-group">
             <label>Reasoning Effort (Budget):</label>
-            <select [(ngModel)]="config.settings.additionalSettings!['reasoningEffort']" (ngModelChange)="configChanged.emit()">
-                <option value="low">Low (512)</option>
-                <option value="medium">Medium (2048)</option>
-                <option value="high">High (8192)</option>
+            <select [ngModel]="resolveReasoningEffort(config.settings.additionalSettings!['reasoningEffort'])"
+                    (ngModelChange)="config.settings.additionalSettings!['reasoningEffort'] = $event; configChanged.emit()">
+                @for (effort of reasoningEfforts; track effort.value) {
+                    <option [value]="effort.value">{{ effort.label }}</option>
+                }
             </select>
         </div>
       }
@@ -142,6 +144,12 @@ export class LlamaConfigComponent {
   // I18n bridge
   private customTranslations = inject(LLM_TRANSLATIONS, { optional: true });
   public i18n = computed(() => this.customTranslations || DEFAULT_LLM_TRANSLATIONS);
+
+  readonly resolveReasoningEffort = resolveLlamaReasoningEffort;
+  readonly reasoningEfforts = Object.entries(LLAMA_REASONING_BUDGETS).map(([value, budget]) => ({
+    value,
+    label: `${value[0].toUpperCase()}${value.slice(1)} (${budget})`
+  }));
 
   private provider = new LlamaCppProvider();
   isRefreshing = signal(false);

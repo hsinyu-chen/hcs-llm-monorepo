@@ -21,7 +21,13 @@ export interface LLMTranslations {
         save: string;
         cancel: string;
         copy: string;
+        /** Template for a copied profile's name; `{{name}}` is the source profile's name. */
+        copyName: string;
+        edit: string;
         delete: string;
+        namePlaceholder: string;
+        noProfiles: string;
+        totalProjection: string;
         test: string;
         confirmDelete: string;
         testing: string;
@@ -70,7 +76,12 @@ export const DEFAULT_LLM_TRANSLATIONS: LLMTranslations = {
         save: 'Save Changes',
         cancel: 'Cancel',
         copy: 'Copy',
+        copyName: '{{name}} (Copy)',
+        edit: 'Edit',
         delete: 'Delete',
+        namePlaceholder: 'Enter name...',
+        noProfiles: 'No profiles found.',
+        totalProjection: 'Total Projection:',
         test: 'Test Connection',
         confirmDelete: 'Are you sure you want to delete this profile?',
         testing: 'Testing...',
@@ -114,7 +125,12 @@ export const ZH_LLM_TRANSLATIONS: LLMTranslations = {
         save: '儲存設定',
         cancel: '取消',
         copy: '複製',
+        copyName: '{{name}} (副本)',
+        edit: '編輯',
         delete: '刪除',
+        namePlaceholder: '輸入名稱...',
+        noProfiles: '尚無設定。',
+        totalProjection: '預估總計:',
         test: '測試連線',
         confirmDelete: '確定要刪除此設定？',
         testing: '測試中...',

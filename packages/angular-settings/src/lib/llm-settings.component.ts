@@ -195,7 +195,8 @@ export class LLMSettingsComponent implements OnInit, OnDestroy {
     copyConfig(config: LLMConfig) {
         const cloned = JSON.parse(JSON.stringify(config));
         cloned.id = crypto.randomUUID();
-        cloned.name = `${cloned.name} (Copy)`;
+        // Function replacer: a `$` in the profile name must not be read as a replacement pattern.
+        cloned.name = this.i18n().settings.copyName.replace('{{name}}', () => cloned.name);
         this.editingConfig.set(cloned);
         this.testStatus.set('');
     }

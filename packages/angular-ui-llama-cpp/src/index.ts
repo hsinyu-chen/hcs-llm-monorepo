@@ -69,35 +69,35 @@ import { LlamaCppProvider } from '@hcs/llm-provider-llama-cpp';
       <div class="form-grid columns-3">
           <div class="form-group-vertical">
               <label>{{ i18n().settings.temperature }}</label>
-              <input type="number" step="0.1" [(ngModel)]="config.settings.temperature" (ngModelChange)="configChanged.emit()" placeholder="0.7">
+              <input type="number" step="0.1" [(ngModel)]="config.settings.temperature" (ngModelChange)="configChanged.emit()" [placeholder]="i18n().settings.serverDefault">
           </div>
           <div class="form-group-vertical">
               <label>{{ i18n().settings.freqPenalty }}</label>
-              <input type="number" step="0.05" [(ngModel)]="config.settings.frequency_penalty" (ngModelChange)="configChanged.emit()" placeholder="0.0">
+              <input type="number" step="0.05" [(ngModel)]="config.settings.frequency_penalty" (ngModelChange)="configChanged.emit()" [placeholder]="i18n().settings.serverDefault">
           </div>
           <div class="form-group-vertical">
               <label>{{ i18n().settings.presPenalty }}</label>
-              <input type="number" step="0.05" [(ngModel)]="config.settings.presence_penalty" (ngModelChange)="configChanged.emit()" placeholder="0.0">
+              <input type="number" step="0.05" [(ngModel)]="config.settings.presence_penalty" (ngModelChange)="configChanged.emit()" [placeholder]="i18n().settings.serverDefault">
           </div>
           <div class="form-group-vertical">
               <label>{{ i18n().settings.topP }}</label>
-              <input type="number" step="0.05" [(ngModel)]="config.settings.additionalSettings!['topP']" (ngModelChange)="configChanged.emit()" placeholder="0.95">
+              <input type="number" step="0.05" [(ngModel)]="config.settings.additionalSettings!['topP']" (ngModelChange)="configChanged.emit()" [placeholder]="i18n().settings.serverDefault">
           </div>
           <div class="form-group-vertical">
               <label>{{ i18n().settings.topK }}</label>
-              <input type="number" step="1" [(ngModel)]="config.settings.additionalSettings!['topK']" (ngModelChange)="configChanged.emit()" placeholder="40">
+              <input type="number" step="1" [(ngModel)]="config.settings.additionalSettings!['topK']" (ngModelChange)="configChanged.emit()" [placeholder]="i18n().settings.serverDefault">
           </div>
           <div class="form-group-vertical">
               <label>{{ i18n().settings.minP }}</label>
-              <input type="number" step="0.05" [(ngModel)]="config.settings.additionalSettings!['minP']" (ngModelChange)="configChanged.emit()" placeholder="0.05">
+              <input type="number" step="0.05" [(ngModel)]="config.settings.additionalSettings!['minP']" (ngModelChange)="configChanged.emit()" [placeholder]="i18n().settings.serverDefault">
           </div>
           <div class="form-group-vertical">
               <label>{{ i18n().settings.repeatPenalty }}</label>
-              <input type="number" step="0.05" [(ngModel)]="config.settings.additionalSettings!['repetitionPenalty']" (ngModelChange)="configChanged.emit()" placeholder="1.1">
+              <input type="number" step="0.05" [(ngModel)]="config.settings.additionalSettings!['repetitionPenalty']" (ngModelChange)="configChanged.emit()" [placeholder]="i18n().settings.serverDefault">
           </div>
           <div class="form-group-vertical">
               <label>{{ i18n().settings.maxTokens }}</label>
-              <input type="number" step="256" [(ngModel)]="config.settings.maxOutputTokens" (ngModelChange)="configChanged.emit()" placeholder="4096">
+              <input type="number" step="256" [(ngModel)]="config.settings.maxOutputTokens" (ngModelChange)="configChanged.emit()" [placeholder]="i18n().settings.serverDefault">
           </div>
       </div>
 

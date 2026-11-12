@@ -118,8 +118,15 @@ export class LlamaCppProvider implements LLMProvider {
         if (baseUrl === undefined) {
             LlamaCppProvider.propsCache.clear();
         } else {
-            LlamaCppProvider.propsCache.delete(baseUrl.replace(/\/$/, ''));
+            LlamaCppProvider.propsCache.delete(LlamaCppProvider.normalizeBaseUrl(baseUrl));
         }
+    }
+
+    /** The server root: llama-server serves /props, /tokenize and /slots there and
+     *  the chat endpoint under /v1, so a pasted OpenAI-style `…/v1` URL is accepted too. */
+    private static normalizeBaseUrl(baseUrl: string | undefined): string {
+        const root = (baseUrl ?? '').trim().replace(/\/+$/, '').replace(/\/v1$/i, '');
+        return root || 'http://localhost:8080';
     }
 
     private extractConfig(config: LLMProviderConfig) {
@@ -127,7 +134,7 @@ export class LlamaCppProvider implements LLMProvider {
         const settings = config.additionalSettings || {};
 
         return {
-            baseUrl: config.baseUrl ? config.baseUrl.replace(/\/$/, '') : 'http://localhost:8080',
+            baseUrl: LlamaCppProvider.normalizeBaseUrl(config.baseUrl),
             modelId: cleanStr(config.modelId) || 'local-model',
             temperature: cleanStr(config.temperature) as number | undefined,
             frequencyPenalty: cleanStr(config.frequency_penalty) as number | undefined,
@@ -316,16 +323,15 @@ export class LlamaCppProvider implements LLMProvider {
         // milliseconds, so without dedup we'd issue ~5 identical /props
         // requests per profile. With this cache, the first caller fetches and
         // every other caller awaits the same promise.
-        const key = baseUrl.replace(/\/$/, '');
         const now = Date.now();
-        const cached = LlamaCppProvider.propsCache.get(key);
+        const cached = LlamaCppProvider.propsCache.get(baseUrl);
         if (cached && cached.expiresAt > now) {
             if (cached.pending) return cached.pending;
             if (cached.value) return cached.value;
         }
 
         const promise = this.doFetchProps(baseUrl);
-        LlamaCppProvider.propsCache.set(key, {
+        LlamaCppProvider.propsCache.set(baseUrl, {
             value: null,
             pending: promise,
             expiresAt: now + PROPS_CACHE_TTL_MS
@@ -339,9 +345,9 @@ export class LlamaCppProvider implements LLMProvider {
         // it so every resolved value survives at least the floor window —
         // otherwise the next caller arriving 1ms later bypasses cache and
         // triggers another full-timeout hang.
-        const existing = LlamaCppProvider.propsCache.get(key);
+        const existing = LlamaCppProvider.propsCache.get(baseUrl);
         if (existing && existing.pending === promise) {
-            LlamaCppProvider.propsCache.set(key, {
+            LlamaCppProvider.propsCache.set(baseUrl, {
                 value,
                 expiresAt: Math.max(existing.expiresAt, Date.now() + PROPS_CACHE_POST_RESOLVE_FLOOR_MS)
             });

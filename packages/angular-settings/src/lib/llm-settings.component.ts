@@ -116,16 +116,10 @@ export class LLMSettingsComponent implements OnInit, OnDestroy {
             const providerInstance = this.manager.getProvider(newProvider);
             let defaultModelId = providerInstance ? providerInstance.getDefaultModelId() : '';
 
-            const newSettings: any = { ...current.settings, modelId: defaultModelId };
-
-            if (newProvider === 'gemini') {
-                newSettings.thinkingLevel = 'minimal';
-            }
-
             this.editingConfig.set({
                 ...current,
                 provider: newProvider,
-                settings: newSettings
+                settings: { ...current.settings, modelId: defaultModelId }
             });
         }
     }

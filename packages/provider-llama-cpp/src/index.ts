@@ -142,6 +142,20 @@ const PROPS_CACHE_TTL_MS = 10_000;
  *  every resolved value (success or empty) survives at least this long. */
 const PROPS_CACHE_POST_RESOLVE_FLOOR_MS = 2_000;
 
+/** Thinking budget in tokens sent as `reasoning_budget_tokens` for each reasoning effort. */
+export const LLAMA_REASONING_BUDGETS = { low: 512, medium: 2048, high: 8192 } as const;
+
+/** Reasoning effort used when the profile sets none, or one that is not in `LLAMA_REASONING_BUDGETS`. */
+export const LLAMA_DEFAULT_REASONING_EFFORT: keyof typeof LLAMA_REASONING_BUDGETS = 'medium';
+
+/** The reasoning effort a stored `reasoningEffort` value stands for: a key of
+ *  `LLAMA_REASONING_BUDGETS` as is, anything else `LLAMA_DEFAULT_REASONING_EFFORT`. */
+export function resolveLlamaReasoningEffort(value: unknown): keyof typeof LLAMA_REASONING_BUDGETS {
+    return typeof value === 'string' && Object.hasOwn(LLAMA_REASONING_BUDGETS, value)
+        ? value as keyof typeof LLAMA_REASONING_BUDGETS
+        : LLAMA_DEFAULT_REASONING_EFFORT;
+}
+
 export class LlamaCppProvider implements LLMProvider {
     readonly providerName = 'llama.cpp';
     settingsComponentId = 'llama-settings';
@@ -231,7 +245,7 @@ export class LlamaCppProvider implements LLMProvider {
             minP: cleanStr(settings['minP']) as number | undefined,
             repetitionPenalty: cleanStr(settings['repetitionPenalty']) as number | undefined,
             enableThinking: (settings['enableThinking'] === undefined ? false : settings['enableThinking']) as boolean,
-            reasoningEffort: (settings['reasoningEffort'] === undefined ? 'low' : settings['reasoningEffort']) as string
+            reasoningEffort: resolveLlamaReasoningEffort(settings['reasoningEffort'])
         };
     }
 
@@ -496,7 +510,6 @@ export class LlamaCppProvider implements LLMProvider {
             }
         } catch {}
 
-        const reasoningBudgetMap: Record<string, number> = { low: 512, medium: 2048, high: 8192 };
         const thinkingEnabled = c.enableThinking;
 
         const tools = config.tools && config.tools.length > 0
@@ -539,7 +552,7 @@ export class LlamaCppProvider implements LLMProvider {
                 }
             } : {}),
             chat_template_kwargs: { enable_thinking: thinkingEnabled },
-            ...(thinkingEnabled ? { reasoning_budget_tokens: reasoningBudgetMap[c.reasoningEffort] ?? 2048 } : {})
+            ...(thinkingEnabled ? { reasoning_budget_tokens: LLAMA_REASONING_BUDGETS[c.reasoningEffort] } : {})
         };
 
         const saveAfterGen = typeof config.cachedContentName === 'string' && config.cachedContentName.length > 0;

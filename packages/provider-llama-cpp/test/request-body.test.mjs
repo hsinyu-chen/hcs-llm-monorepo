@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { LlamaCppProvider } from '../dist/index.js';
+import { LLAMA_DEFAULT_REASONING_EFFORT, LLAMA_REASONING_BUDGETS, LlamaCppProvider, resolveLlamaReasoningEffort } from '../dist/index.js';
 
 const BASE_URL = 'http://llama.test';
 
@@ -91,7 +91,7 @@ describe('LlamaCppProvider request body', () => {
     });
 
     it('sends reasoning_budget_tokens for each reasoning effort when thinking is on', async () => {
-        const expected = { low: 512, medium: 2048, high: 8192, unknown: 2048 };
+        const expected = { low: 512, medium: 2048, high: 8192, unknown: 2048, toString: 2048 };
         for (const [reasoningEffort, budget] of Object.entries(expected)) {
             const { body } = await generate({ enableThinking: true, reasoningEffort });
             assert.equal(body.reasoning_budget_tokens, budget, reasoningEffort);
@@ -99,9 +99,23 @@ describe('LlamaCppProvider request body', () => {
         }
     });
 
-    it('defaults reasoning_budget_tokens to the low effort when thinking is on', async () => {
+    it('exports the budget table and the medium default', () => {
+        assert.deepEqual(LLAMA_REASONING_BUDGETS, { low: 512, medium: 2048, high: 8192 });
+        assert.equal(LLAMA_DEFAULT_REASONING_EFFORT, 'medium');
+    });
+
+    it('resolves each tier to itself and any other value to the default', () => {
+        for (const effort of ['low', 'medium', 'high']) {
+            assert.equal(resolveLlamaReasoningEffort(effort), effort);
+        }
+        for (const value of [undefined, null, '', 'minimal', 'toString', 2048]) {
+            assert.equal(resolveLlamaReasoningEffort(value), LLAMA_DEFAULT_REASONING_EFFORT, String(value));
+        }
+    });
+
+    it('defaults reasoning_budget_tokens to the medium effort when thinking is on', async () => {
         const { body } = await generate({ enableThinking: true });
-        assert.equal(body.reasoning_budget_tokens, 512);
+        assert.equal(body.reasoning_budget_tokens, 2048);
     });
 
     it('sends no reasoning budget when thinking is off', async () => {

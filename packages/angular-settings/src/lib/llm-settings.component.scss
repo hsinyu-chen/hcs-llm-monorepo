@@ -238,8 +238,10 @@
             }
         }
 
-        .advanced-divider { 
-            font-size: 0.75rem; 
+        .field-hint { display: block; margin-top: 4px; font-size: 0.7rem; color: #8b949e; }
+
+        .advanced-divider {
+            font-size: 0.75rem;
             color: #58a6ff; 
             margin-top: 8px; 
             border-bottom: 1px solid #30363d; 

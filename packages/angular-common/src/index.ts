@@ -69,6 +69,9 @@ export interface LLMTranslations {
         minP: string;
         repeatPenalty: string;
         maxTokens: string;
+        /** Placeholder of a sampling field left unset, so the server's own default applies. */
+        serverDefault: string;
+        maxTokensIncludesThinking: string;
     }
 }
 
@@ -123,7 +126,9 @@ export const DEFAULT_LLM_TRANSLATIONS: LLMTranslations = {
         topK: 'Top K:',
         minP: 'Min P:',
         repeatPenalty: 'Repeat Penalty:',
-        maxTokens: 'Max Tokens:'
+        maxTokens: 'Max Tokens:',
+        serverDefault: 'Server default',
+        maxTokensIncludesThinking: 'On a llama-server /v1 endpoint this limit also counts thinking tokens.'
     }
 };
 
@@ -173,6 +178,8 @@ export const ZH_LLM_TRANSLATIONS: LLMTranslations = {
         topK: 'Top K:',
         minP: 'Min P:',
         repeatPenalty: '重複懲罰 (Repeat Penalty):',
-        maxTokens: '最大 Token 數 (Max Tokens):'
+        maxTokens: '最大 Token 數 (Max Tokens):',
+        serverDefault: '伺服器預設',
+        maxTokensIncludesThinking: '接 llama-server 的 /v1 時，這個上限也包含思考的 token。'
     }
 };

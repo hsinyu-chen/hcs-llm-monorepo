@@ -60,21 +60,22 @@ import { OpenAIProvider } from '@hcs/llm-provider-openai';
       <div class="form-grid columns-2">
           <div class="form-group-vertical">
               <label for="temp">{{ i18n().settings.temperature }}</label>
-              <input id="temp" type="number" step="0.1" min="0" max="2" 
+              <input id="temp" type="number" step="0.1" min="0" max="2" [placeholder]="i18n().settings.serverDefault"
                      [(ngModel)]="config.settings.temperature" (ngModelChange)="configChanged.emit()">
           </div>
           <div class="form-group-vertical">
               <label for="maxTokens">{{ i18n().settings.maxTokens }}</label>
-              <input id="maxTokens" type="number" step="128" min="1" 
+              <input id="maxTokens" type="number" step="128" min="1" [placeholder]="i18n().settings.serverDefault"
                      [(ngModel)]="config.settings.maxOutputTokens" (ngModelChange)="configChanged.emit()">
+              <small class="field-hint">{{ i18n().settings.maxTokensIncludesThinking }}</small>
           </div>
           <div class="form-group-vertical">
               <label for="freq">{{ i18n().settings.freqPenalty }}</label>
-              <input id="freq" type="number" step="0.05" [(ngModel)]="config.settings.frequency_penalty" (ngModelChange)="configChanged.emit()">
+              <input id="freq" type="number" step="0.05" [placeholder]="i18n().settings.serverDefault" [(ngModel)]="config.settings.frequency_penalty" (ngModelChange)="configChanged.emit()">
           </div>
           <div class="form-group-vertical">
               <label for="pres">{{ i18n().settings.presPenalty }}</label>
-              <input id="pres" type="number" step="0.05" [(ngModel)]="config.settings.presence_penalty" (ngModelChange)="configChanged.emit()">
+              <input id="pres" type="number" step="0.05" [placeholder]="i18n().settings.serverDefault" [(ngModel)]="config.settings.presence_penalty" (ngModelChange)="configChanged.emit()">
           </div>
       </div>
 

@@ -2,7 +2,7 @@ import { Component, inject, output, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LLM_CONFIG_DATA, LLM_TRANSLATIONS, DEFAULT_LLM_TRANSLATIONS } from '@hcs/llm-angular-common';
-import { OpenAIProvider } from '@hcs/llm-provider-openai';
+import { OPENAI_DEFAULT_REASONING_EFFORT } from '@hcs/llm-provider-openai';
 
 @Component({
   selector: 'hcs-openai-config',
@@ -105,7 +105,8 @@ import { OpenAIProvider } from '@hcs/llm-provider-openai';
           @if (config.settings.additionalSettings!['enableThinking']) {
             <div class="form-group">
               <label>Reasoning Effort:</label>
-              <select [(ngModel)]="config.settings.additionalSettings!['reasoningEffort']" (ngModelChange)="configChanged.emit()">
+              <select [ngModel]="config.settings.additionalSettings!['reasoningEffort'] ?? defaultReasoningEffort"
+                      (ngModelChange)="config.settings.additionalSettings!['reasoningEffort'] = $event; configChanged.emit()">
                 <option value="low">Low</option>
                 <option value="medium">Medium</option>
                 <option value="high">High</option>
@@ -124,6 +125,8 @@ export class OpenAIConfigComponent {
   // I18n bridge
   private customTranslations = inject(LLM_TRANSLATIONS, { optional: true });
   public i18n = computed(() => this.customTranslations || DEFAULT_LLM_TRANSLATIONS);
+
+  readonly defaultReasoningEffort = OPENAI_DEFAULT_REASONING_EFFORT;
 
   presets = [
     { id: 'gpt-5.2', input: 1.75, cached: 0.175, output: 14.00 },

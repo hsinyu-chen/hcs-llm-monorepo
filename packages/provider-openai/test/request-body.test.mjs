@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { OpenAIProvider } from '../dist/index.js';
+import { OpenAIProvider, OPENAI_DEFAULT_REASONING_EFFORT } from '../dist/index.js';
 
 const BASE_URL = 'http://openai.test/v1';
 
@@ -97,7 +97,8 @@ describe('OpenAIProvider request body', () => {
 
     it('defaults chat_template_kwargs to thinking off and low effort', async () => {
         const { body } = await generate({ useChatTemplateKwargs: true });
-        assert.deepEqual(body.chat_template_kwargs, { enable_thinking: false, reasoning_effort: 'low' });
+        assert.equal(OPENAI_DEFAULT_REASONING_EFFORT, 'low');
+        assert.deepEqual(body.chat_template_kwargs, { enable_thinking: false, reasoning_effort: OPENAI_DEFAULT_REASONING_EFFORT });
     });
 
     it('sends no chat_template_kwargs when useChatTemplateKwargs is off', async () => {

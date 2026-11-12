@@ -17,6 +17,9 @@ interface OpenAIToolCallAccumulator {
     argsBuffer: string;
 }
 
+/** Reasoning effort sent in chat_template_kwargs when the profile sets none. */
+export const OPENAI_DEFAULT_REASONING_EFFORT = 'low';
+
 export class OpenAIProvider implements LLMProvider {
     readonly providerName = 'openai';
     settingsComponentId = 'openai-settings';
@@ -38,7 +41,7 @@ export class OpenAIProvider implements LLMProvider {
             outputPrice: cleanStr(config.outputPrice) as number | undefined,
             useChatTemplateKwargs: (settings['useChatTemplateKwargs'] === undefined ? false : settings['useChatTemplateKwargs']) as boolean,
             enableThinking: (settings['enableThinking'] === undefined ? false : settings['enableThinking']) as boolean,
-            reasoningEffort: (settings['reasoningEffort'] === undefined ? 'low' : settings['reasoningEffort']) as string
+            reasoningEffort: (settings['reasoningEffort'] === undefined ? OPENAI_DEFAULT_REASONING_EFFORT : settings['reasoningEffort']) as string
         };
     }
 

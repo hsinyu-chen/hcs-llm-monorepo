@@ -6,7 +6,9 @@ import {
     LLMFunctionCall,
     LLMGenerateConfig,
     LLMStreamChunk,
-    LLMModelDefinition
+    LLMModelDefinition,
+    LLMProbeResult,
+    probeJson
 } from '@hcs/llm-core';
 
 interface OpenAIToolCallAccumulator {
@@ -178,6 +180,23 @@ export class OpenAIProvider implements LLMProvider {
 
     getDefaultModelId(): string {
         return 'gpt-4o';
+    }
+
+    /** Lists `{baseUrl}/models` as given; the caller decides whether to retry with `/v1` appended. */
+    async probe(config: LLMProviderConfig, opts: { signal?: AbortSignal } = {}): Promise<LLMProbeResult> {
+        const c = this.extractConfig(config);
+        const res = await probeJson(`${c.baseUrl}/models`, { headers: this.authHeaders(c.apiKey) }, opts.signal);
+        if (!res.ok) return res;
+
+        const data = res.json && typeof res.json === 'object' ? (res.json as { data?: unknown }).data : undefined;
+        if (!Array.isArray(data)) return { ok: false, reason: 'not-this-server', message: res.snippet };
+
+        return {
+            ok: true,
+            models: data
+                .filter((m): m is { id: string } => typeof m?.id === 'string')
+                .map(m => ({ id: m.id }))
+        };
     }
 
     async *generateContentStream(

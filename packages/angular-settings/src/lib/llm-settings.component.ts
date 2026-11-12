@@ -21,7 +21,8 @@ import {
     LLM_TRANSLATIONS, 
     DEFAULT_LLM_TRANSLATIONS,
     LLM_STORAGE_TOKEN,
-    LLM_CONFIG_DATA
+    LLM_CONFIG_DATA,
+    LLM_CONFIRM
 } from '@hcs/llm-angular-common';
 
 interface TestStatus {
@@ -47,7 +48,8 @@ export class LLMSettingsComponent implements OnInit, OnDestroy {
     private manager = inject(LLMManager);
     private storage = inject(LLM_STORAGE_TOKEN);
     private injector = inject(Injector);
-    
+    private confirm = inject(LLM_CONFIRM);
+
     // I18n bridge
     private customTranslations = inject(LLM_TRANSLATIONS, { optional: true });
     public i18n = computed(() => this.customTranslations || DEFAULT_LLM_TRANSLATIONS);
@@ -228,7 +230,7 @@ export class LLMSettingsComponent implements OnInit, OnDestroy {
     }
 
     async deleteConfig(id: string) {
-        if (confirm(this.i18n().settings.confirmDelete)) {
+        if (await this.confirm(this.i18n().settings.confirmDelete)) {
             await this.storage.delete(id);
             await this.loadConfigs();
         }

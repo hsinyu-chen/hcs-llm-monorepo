@@ -12,6 +12,15 @@ export const LLM_CONFIG_DATA = new InjectionToken<LLMConfig>('HCS_LLM_CONFIG_DAT
 export const LLM_STORAGE_TOKEN = new InjectionToken<ILLMStorage>('HCS_LLM_STORAGE_TOKEN');
 
 /**
+ * Asks the user to confirm an action; resolves `true` to proceed.
+ * Defaults to `window.confirm`; hosts with their own dialogs provide a replacement.
+ */
+export const LLM_CONFIRM = new InjectionToken<(message: string) => Promise<boolean>>('HCS_LLM_CONFIRM', {
+    providedIn: 'root',
+    factory: () => (message: string) => Promise.resolve(window.confirm(message))
+});
+
+/**
  * Interface for the required translation keys in the LLM Settings UI.
  */
 export interface LLMTranslations {

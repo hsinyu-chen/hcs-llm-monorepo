@@ -85,6 +85,19 @@ describe('LlamaCppProvider request body', () => {
         assert.equal('repeat_penalty' in body, false);
     });
 
+    it('sends the max tokens setting as max_tokens', async () => {
+        const { body } = await generate({}, {}, { maxOutputTokens: 4096 });
+        assert.equal(body.max_tokens, 4096);
+        assert.equal('n_predict' in body, false);
+    });
+
+    it('omits max_tokens when the max tokens setting is not set', async () => {
+        for (const configOverrides of [{}, { maxOutputTokens: '' }]) {
+            const { body } = await generate({}, {}, configOverrides);
+            assert.equal('max_tokens' in body, false, JSON.stringify(configOverrides));
+        }
+    });
+
     it('sends enable_thinking in chat_template_kwargs', async () => {
         assert.deepEqual((await generate({ enableThinking: true })).body.chat_template_kwargs, { enable_thinking: true });
         assert.deepEqual((await generate()).body.chat_template_kwargs, { enable_thinking: false });

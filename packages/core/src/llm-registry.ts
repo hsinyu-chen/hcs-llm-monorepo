@@ -1,4 +1,4 @@
-import { LLMProvider, LLMProviderCapabilities } from './llm-provider';
+import { LLMProvider, LLMProviderCapabilities } from './llm-provider.js';
 
 /**
  * LLMProviderRegistry - Factory for managing LLM providers.

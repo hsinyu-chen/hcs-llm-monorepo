@@ -1,4 +1,4 @@
-import { LLMConfig } from './llm-provider';
+import { LLMConfig } from './llm-provider.js';
 
 /**
  * ILLMStorage - Abstract interface for persisting LLM configurations.

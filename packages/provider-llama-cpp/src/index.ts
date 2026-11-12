@@ -460,7 +460,8 @@ export class LlamaCppProvider implements LLMProvider {
             ...(c.topP != null ? { top_p: c.topP } : {}),
             ...(c.topK != null ? { top_k: c.topK } : {}),
             ...(c.minP != null ? { min_p: c.minP } : {}),
-            ...(c.repetitionPenalty != null ? { repetition_penalty: c.repetitionPenalty } : {}),
+            // llama-server's sampling field is `repeat_penalty`; it has no `repetition_penalty` alias.
+            ...(c.repetitionPenalty != null ? { repeat_penalty: c.repetitionPenalty } : {}),
             ...(tools ? { tools } : {}),
             ...(config.toolConfig ? { tool_choice: config.toolConfig } : {}),
             ...(config.responseSchema && !tools ? {

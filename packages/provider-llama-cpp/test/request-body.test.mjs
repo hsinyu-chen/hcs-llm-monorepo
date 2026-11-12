@@ -74,9 +74,15 @@ describe('LlamaCppProvider request body', () => {
         }
     });
 
-    it('sends the repetition penalty setting', async () => {
+    it('sends the repetition penalty setting as repeat_penalty', async () => {
         const { body } = await generate({ repetitionPenalty: 1.1 });
-        assert.equal(body.repetition_penalty, 1.1);
+        assert.equal(body.repeat_penalty, 1.1);
+        assert.equal('repetition_penalty' in body, false);
+    });
+
+    it('omits repeat_penalty when the repetition penalty is not set', async () => {
+        const { body } = await generate();
+        assert.equal('repeat_penalty' in body, false);
     });
 
     it('sends enable_thinking in chat_template_kwargs', async () => {
